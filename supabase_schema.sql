@@ -1,0 +1,62 @@
+-- Schema Supabase pour Optiflow Best Solution
+-- A executer dans Supabase Studio > SQL Editor (voir SETUP_SUPABASE.md).
+-- Idempotent : peut etre relance sans casser l'existant.
+
+-- 1) Catalogue produits (verres)
+create table if not exists public.products (
+    id          uuid primary key default gen_random_uuid(),
+    reference   text,
+    family      text check (family in ('simple_foyer', 'eyezen', 'varilux')),
+    lens_type   text not null,
+    index       text,
+    treatment   text,
+    transition  text,
+    geometry    text,
+    price       numeric(10, 2),
+    notes       text,
+    created_at  timestamptz not null default now()
+);
+
+create index if not exists products_family_idx on public.products (family);
+
+-- 2) Annotations expert : une note + un statut de verification par question
+create table if not exists public.expert_annotations (
+    id          uuid primary key default gen_random_uuid(),
+    field       text not null,          -- cle de la question (ex: 'age', 'main_need')
+    question    text,                   -- libelle de la question au moment de l'annotation
+    note        text,
+    verified    boolean not null default false,
+    author      text,
+    created_at  timestamptz not null default now()
+);
+
+create index if not exists expert_annotations_field_idx on public.expert_annotations (field);
+
+-- 3) Journal des recommandations (optionnel, pour analyse / amelioration)
+create table if not exists public.recommendation_logs (
+    id          uuid primary key default gen_random_uuid(),
+    family      text,
+    profile     jsonb,
+    reco        jsonb,
+    created_at  timestamptz not null default now()
+);
+
+-- Row Level Security.
+-- Pour demarrer simplement avec la cle "anon" en lecture/ecriture, on active
+-- RLS puis on ouvre une policy permissive. RESTREINDRE plus tard si besoin
+-- (ex: ecriture reservee a un role authentifie expert).
+alter table public.products            enable row level security;
+alter table public.expert_annotations  enable row level security;
+alter table public.recommendation_logs enable row level security;
+
+drop policy if exists "anon_all_products" on public.products;
+create policy "anon_all_products" on public.products
+    for all using (true) with check (true);
+
+drop policy if exists "anon_all_annotations" on public.expert_annotations;
+create policy "anon_all_annotations" on public.expert_annotations
+    for all using (true) with check (true);
+
+drop policy if exists "anon_all_logs" on public.recommendation_logs;
+create policy "anon_all_logs" on public.recommendation_logs
+    for all using (true) with check (true);

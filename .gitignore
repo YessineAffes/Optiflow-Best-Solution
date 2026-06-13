@@ -1,0 +1,10 @@
+﻿.env
+__pycache__/
+*.pyc
+.cache/
+*.log
+data/docs/~$*.docx
+.streamlit/secrets.toml
+chroma_db/
+.venv/
+venv/
