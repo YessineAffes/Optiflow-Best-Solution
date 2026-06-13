@@ -385,45 +385,48 @@ with main_col:
 disabled = st.session_state.reco is not None
 current_field = current_agent_field()
 
-if not disabled and current_field == "correction_total":
-    st.markdown('<div class="rx-form-wrap"><p class="rx-form-title">Ordonnance OD / OG</p></div>', unsafe_allow_html=True)
-    with st.form("rx_form", clear_on_submit=True):
-        h0, h1, h2, h3 = st.columns([0.8, 1.6, 1.6, 1.6])
-        h0.markdown("")
-        h1.markdown('<div class="rx-head">Sph</div>', unsafe_allow_html=True)
-        h2.markdown('<div class="rx-head">Axe</div>', unsafe_allow_html=True)
-        h3.markdown('<div class="rx-head">Add</div>', unsafe_allow_html=True)
-        r0, r1, r2, r3 = st.columns([0.8, 1.6, 1.6, 1.6])
-        r0.markdown('<div class="rx-eye">OD</div>', unsafe_allow_html=True)
-        od_sph = r1.number_input("OD Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-        od_axis = r2.number_input("OD Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
-        od_add = r3.number_input("OD Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-        g0, g1, g2, g3 = st.columns([0.8, 1.6, 1.6, 1.6])
-        g0.markdown('<div class="rx-eye">OG</div>', unsafe_allow_html=True)
-        og_sph = g1.number_input("OG Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-        og_axis = g2.number_input("OG Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
-        og_add = g3.number_input("OG Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-        submit_rx = st.form_submit_button("Valider l'ordonnance", use_container_width=True)
-    if submit_rx:
-        add_value = max(float(od_add), float(og_add))
-        message = f"OD Sph {format_rx_number(od_sph)} Axe {format_axis(od_axis)} OG Sph {format_rx_number(og_sph)} Axe {format_axis(og_axis)}"
-        display = f"OD Sph {format_rx_number(od_sph)} | OD Axe {format_axis(od_axis)} | OG Sph {format_rx_number(og_sph)} | OG Axe {format_axis(og_axis)}"
-        if add_value > 0:
-            message += f" ADD {format_rx_number(add_value)}"
-            display += f" | Add {format_rx_number(add_value)}"
-        submit_to_agent(message, display)
-elif not disabled and current_field in CHOICE_FIELDS:
-    render_choice_buttons(current_field)
-else:
-    with st.form("chat_form", clear_on_submit=True):
-        col1, col2 = st.columns([5, 1])
-        user_input = col1.text_input("", placeholder="Votre reponse...", disabled=disabled, label_visibility="collapsed")
-        submit = col2.form_submit_button("Envoyer", disabled=disabled, use_container_width=True)
-    if submit and user_input.strip():
-        submit_to_agent(user_input.strip())
+# Zone de saisie rendue DANS la colonne de gauche (sous le chat) pour qu'elle
+# s'aligne sur les bulles et ne s'etire pas sur toute la largeur de la page.
+with main_col:
+    if not disabled and current_field == "correction_total":
+        st.markdown('<div class="rx-form-wrap"><p class="rx-form-title">Ordonnance OD / OG</p></div>', unsafe_allow_html=True)
+        with st.form("rx_form", clear_on_submit=True):
+            h0, h1, h2, h3 = st.columns([0.8, 1.6, 1.6, 1.6])
+            h0.markdown("")
+            h1.markdown('<div class="rx-head">Sph</div>', unsafe_allow_html=True)
+            h2.markdown('<div class="rx-head">Axe</div>', unsafe_allow_html=True)
+            h3.markdown('<div class="rx-head">Add</div>', unsafe_allow_html=True)
+            r0, r1, r2, r3 = st.columns([0.8, 1.6, 1.6, 1.6])
+            r0.markdown('<div class="rx-eye">OD</div>', unsafe_allow_html=True)
+            od_sph = r1.number_input("OD Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
+            od_axis = r2.number_input("OD Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
+            od_add = r3.number_input("OD Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
+            g0, g1, g2, g3 = st.columns([0.8, 1.6, 1.6, 1.6])
+            g0.markdown('<div class="rx-eye">OG</div>', unsafe_allow_html=True)
+            og_sph = g1.number_input("OG Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
+            og_axis = g2.number_input("OG Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
+            og_add = g3.number_input("OG Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
+            submit_rx = st.form_submit_button("Valider l'ordonnance", use_container_width=True)
+        if submit_rx:
+            add_value = max(float(od_add), float(og_add))
+            message = f"OD Sph {format_rx_number(od_sph)} Axe {format_axis(od_axis)} OG Sph {format_rx_number(og_sph)} Axe {format_axis(og_axis)}"
+            display = f"OD Sph {format_rx_number(od_sph)} | OD Axe {format_axis(od_axis)} | OG Sph {format_rx_number(og_sph)} | OG Axe {format_axis(og_axis)}"
+            if add_value > 0:
+                message += f" ADD {format_rx_number(add_value)}"
+                display += f" | Add {format_rx_number(add_value)}"
+            submit_to_agent(message, display)
+    elif not disabled and current_field in CHOICE_FIELDS:
+        render_choice_buttons(current_field)
+    else:
+        with st.form("chat_form", clear_on_submit=True):
+            col1, col2 = st.columns([5, 1])
+            user_input = col1.text_input("Votre reponse", placeholder="Votre reponse...", disabled=disabled, label_visibility="collapsed")
+            submit = col2.form_submit_button("Envoyer", disabled=disabled, use_container_width=True)
+        if submit and user_input.strip():
+            submit_to_agent(user_input.strip())
 
-if st.session_state.get("expert_mode"):
-    if not disabled and current_field:
-        render_expert_panel(current_field, FIELD_QUESTIONS.get(current_field, ""))
-    elif disabled:
-        render_expert_panel("recommendation", "Recommandation finale")
+    if st.session_state.get("expert_mode"):
+        if not disabled and current_field:
+            render_expert_panel(current_field, FIELD_QUESTIONS.get(current_field, ""))
+        elif disabled:
+            render_expert_panel("recommendation", "Recommandation finale")
