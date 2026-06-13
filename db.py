@@ -32,6 +32,16 @@ logger = logging.getLogger("optiflow.db")
 PRODUCTS_TABLE = "products"
 ANNOTATIONS_TABLE = "expert_annotations"
 LOGS_TABLE = "recommendation_logs"
+EVALUATIONS_TABLE = "evaluations"
+
+
+def _family_from_lens_type(lens_type: str) -> str:
+    text = (lens_type or "").lower()
+    if "varilux" in text:
+        return "varilux"
+    if "eyezen" in text or "eyzen" in text:
+        return "eyezen"
+    return "simple_foyer"
 
 
 class SupabaseStore:
@@ -143,6 +153,51 @@ class SupabaseStore:
         except Exception as exc:
             logger.warning("log_recommendation a echoue: %s", exc)
             return False
+
+    # ---- Validation de la recommandation finale ------------------------
+    def add_evaluation(self, reco: dict[str, Any], validations: dict[str, int], author: str = "") -> bool:
+        """Enregistre la validation oui(1)/non(0) de chaque champ de la reco.
+
+        `validations` attend les cles : type_ok, treatment_ok, index_ok,
+        transition_ok, et geometry_ok (uniquement si Varilux ; sinon None).
+        """
+        if not self.enabled:
+            self.last_error = "Supabase non configure."
+            return False
+        lens_type = str(reco.get("lens_type", ""))
+        payload = {
+            "family": _family_from_lens_type(lens_type),
+            "lens_type": lens_type,
+            "reco": {
+                "lens_type": lens_type,
+                "index": reco.get("index"),
+                "treatment": reco.get("treatment"),
+                "transition": reco.get("transition"),
+                "geometrie": reco.get("geometrie"),
+            },
+            "type_ok": validations.get("type_ok"),
+            "treatment_ok": validations.get("treatment_ok"),
+            "index_ok": validations.get("index_ok"),
+            "transition_ok": validations.get("transition_ok"),
+            "geometry_ok": validations.get("geometry_ok"),
+            "author": author,
+        }
+        try:
+            self.client.table(EVALUATIONS_TABLE).insert(payload).execute()
+            return True
+        except Exception as exc:
+            self.last_error = str(exc)
+            logger.warning("add_evaluation a echoue: %s", exc)
+            return False
+
+    def list_evaluations(self) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        try:
+            return self.client.table(EVALUATIONS_TABLE).select("*").order("created_at", desc=True).execute().data or []
+        except Exception as exc:
+            logger.warning("list_evaluations a echoue: %s", exc)
+            return []
 
 
 def _resolve_config() -> tuple[str, str]:

@@ -318,6 +318,42 @@ def render_expert_panel(field: str, question: str):
                 st.error(f"Echec de l'enregistrement : {store.last_error or 'base indisponible'}")
 
 
+def render_evaluation_panel(reco: dict):
+    """Validation oui/non de chaque champ de la reco finale (table evaluations).
+
+    Geometrie incluse seulement pour les verres Varilux.
+    """
+    store = db.get_store()
+    lens_type = reco.get("lens_type", "")
+    is_varilux = "Varilux" in lens_type
+    fields = [
+        ("type_ok", "Type", lens_type),
+        ("treatment_ok", "Traitement", reco.get("treatment", "")),
+        ("index_ok", "Indice", reco.get("index", "")),
+        ("transition_ok", "Transition", reco.get("transition", "")),
+    ]
+    if is_varilux:
+        fields.append(("geometry_ok", "Geometrie", reco.get("geometrie", "")))
+
+    with st.expander("✅ Validation de la recommandation", expanded=True):
+        if not store.enabled:
+            st.info("Supabase non configure : validations non enregistrees. Voir SETUP_SUPABASE.md.")
+        with st.form("eval_form", clear_on_submit=False):
+            answers = {}
+            for key, label, value in fields:
+                col_label, col_choice = st.columns([1.4, 1])
+                col_label.markdown(f"**{label}**<br><span style='color:#666;font-size:13px'>{html_text(value) or '-'}</span>", unsafe_allow_html=True)
+                answers[key] = col_choice.radio(label, ["Oui", "Non"], horizontal=True, key=f"eval_{key}", label_visibility="collapsed")
+            saved = st.form_submit_button("Enregistrer la validation", use_container_width=True)
+        if saved:
+            validations = {key: (1 if answers[key] == "Oui" else 0) for key in answers}
+            author = st.session_state.get("expert_author", "")
+            if store.add_evaluation(reco, validations, author):
+                st.success("Validation enregistree.")
+            else:
+                st.error(f"Echec de l'enregistrement : {store.last_error or 'base indisponible'}")
+
+
 def format_rx_number(value: float) -> str:
     return f"{float(value):.2f}"
 
@@ -350,7 +386,7 @@ with st.sidebar:
         st.session_state.agent = new_agent()
         st.rerun()
     st.divider()
-    st.session_state.expert_mode = st.toggle("Mode expert", value=st.session_state.get("expert_mode", False))
+    st.session_state.expert_mode = st.toggle("Mode expert", value=st.session_state.get("expert_mode", True))
     if st.session_state.expert_mode:
         st.session_state.expert_author = st.text_input(
             "Expert", value=st.session_state.get("expert_author", ""), placeholder="Votre nom"
@@ -429,5 +465,6 @@ with main_col:
     if st.session_state.get("expert_mode"):
         if not disabled and current_field:
             render_expert_panel(current_field, FIELD_QUESTIONS.get(current_field, ""))
-        elif disabled:
+        elif disabled and st.session_state.reco:
+            render_evaluation_panel(st.session_state.reco)
             render_expert_panel("recommendation", "Recommandation finale")

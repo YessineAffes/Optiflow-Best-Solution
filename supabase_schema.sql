@@ -41,6 +41,22 @@ create table if not exists public.recommendation_logs (
     created_at  timestamptz not null default now()
 );
 
+-- 4) Validation de la recommandation finale (1 = correct, 0 = incorrect).
+--    geometry_ok reste NULL si le type n'est pas un Varilux.
+create table if not exists public.evaluations (
+    id            uuid primary key default gen_random_uuid(),
+    family        text,
+    lens_type     text,
+    reco          jsonb,
+    type_ok       smallint check (type_ok in (0, 1)),
+    treatment_ok  smallint check (treatment_ok in (0, 1)),
+    index_ok      smallint check (index_ok in (0, 1)),
+    transition_ok smallint check (transition_ok in (0, 1)),
+    geometry_ok   smallint check (geometry_ok in (0, 1)),
+    author        text,
+    created_at    timestamptz not null default now()
+);
+
 -- Row Level Security.
 -- Pour demarrer simplement avec la cle "anon" en lecture/ecriture, on active
 -- RLS puis on ouvre une policy permissive. RESTREINDRE plus tard si besoin
@@ -48,6 +64,7 @@ create table if not exists public.recommendation_logs (
 alter table public.products            enable row level security;
 alter table public.expert_annotations  enable row level security;
 alter table public.recommendation_logs enable row level security;
+alter table public.evaluations         enable row level security;
 
 drop policy if exists "anon_all_products" on public.products;
 create policy "anon_all_products" on public.products
@@ -59,4 +76,8 @@ create policy "anon_all_annotations" on public.expert_annotations
 
 drop policy if exists "anon_all_logs" on public.recommendation_logs;
 create policy "anon_all_logs" on public.recommendation_logs
+    for all using (true) with check (true);
+
+drop policy if exists "anon_all_evaluations" on public.evaluations;
+create policy "anon_all_evaluations" on public.evaluations
     for all using (true) with check (true);
