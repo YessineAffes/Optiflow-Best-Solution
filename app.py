@@ -417,11 +417,12 @@ with main_col:
             submit_to_agent(message, display)
     elif not disabled and current_field in CHOICE_FIELDS:
         render_choice_buttons(current_field)
-    else:
+    elif not disabled and current_field:
+        # Barre de saisie affichee uniquement s'il reste une question ouverte.
         with st.form("chat_form", clear_on_submit=True):
             col1, col2 = st.columns([5, 1])
-            user_input = col1.text_input("Votre reponse", placeholder="Votre reponse...", disabled=disabled, label_visibility="collapsed")
-            submit = col2.form_submit_button("Envoyer", disabled=disabled, use_container_width=True)
+            user_input = col1.text_input("Votre reponse", placeholder="Votre reponse...", label_visibility="collapsed")
+            submit = col2.form_submit_button("Envoyer", use_container_width=True)
         if submit and user_input.strip():
             submit_to_agent(user_input.strip())
 
