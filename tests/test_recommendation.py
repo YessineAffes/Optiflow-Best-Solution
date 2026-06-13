@@ -286,6 +286,41 @@ def test_flow_starts_with_age(make_agent):
     assert a._next_scenario_field() == "age"
 
 
+def test_progress_fresh_agent(make_agent):
+    a = make_agent()
+    p = a.progress()
+    assert p["total"] == 1 and p["answered"] == 0 and p["ratio"] == 0.0
+    assert p["done"] is False
+    assert p["remaining_questions"] == ["Quel age avez-vous ?"]
+
+
+def test_progress_after_age_expands_total(make_agent):
+    a = make_agent()
+    a.profile = {"age": 25}  # simple foyer ; branches soleil elaguees tant que sun_exposure != oui => 6 etapes
+    p = a.progress()
+    assert p["total"] == 6
+    assert p["answered"] == 1
+    assert 0.0 < p["ratio"] < 1.0
+    assert "age" not in p["remaining_fields"]
+
+
+def test_progress_total_grows_when_sun_branch_opens(make_agent):
+    a = make_agent()
+    a.profile = {"age": 25, "sun_exposure": True}  # ouvre sun_discomfort
+    p = a.progress()
+    assert "sun_discomfort" in p["remaining_fields"]
+    assert p["total"] == 7
+
+
+def test_progress_done_is_full(make_agent):
+    a = make_agent()
+    a.profile = {"age": 25}
+    a.last_recommendation = {"lens_type": "simple foyer"}
+    p = a.progress()
+    assert p["done"] is True and p["ratio"] == 1.0
+    assert p["remaining_questions"] == []
+
+
 def test_simple_foyer_flow_skips_varilux_questions(make_agent):
     a = make_agent()
     a.profile = {"age": 25}

@@ -109,6 +109,26 @@ def preview_reco() -> dict:
     return build_document_recommendation(profile, family)
 
 
+def render_live_progress():
+    """Barre de progression + questions restantes, dans l'apercu live."""
+    agent = st.session_state.get("agent")
+    if agent is None:
+        return
+    progress = agent.progress()
+    total = progress["total"] or 1
+    answered = progress["answered"]
+    if progress["done"]:
+        st.progress(1.0, text="Recommandation prete")
+        return
+    step = min(answered + 1, total)
+    st.progress(progress["ratio"], text=f"Question {step}/{total} · {answered} repondue(s)")
+    remaining = progress["remaining_questions"]
+    if remaining:
+        with st.expander(f"Questions restantes ({len(remaining)})", expanded=False):
+            for index, question in enumerate(remaining, start=1):
+                st.markdown(f"{index}. {html_text(question)}", unsafe_allow_html=True)
+
+
 def render_live_preview():
     profile = current_agent_profile()
     family = current_agent_family()
@@ -316,9 +336,16 @@ main_col, preview_col = st.columns([1.25, 1], gap="large")
 with preview_col:
     agent_mode = "LLM + RAG + tools" if getattr(st.session_state.agent, "llm", None) is not None else "Fallback local"
     st.caption(f"Mode agent : {agent_mode}")
+    render_live_progress()
     render_live_preview()
 
 with main_col:
+    if not st.session_state.messages and not st.session_state.reco:
+        render_bot_message(
+            "Bonjour 👋 Je suis Optiflow, votre assistant verres Essilor. "
+            "Repondez aux quelques questions ci-contre et je construis la recommandation adaptee. "
+            "Pour commencer : quel age avez-vous ?"
+        )
     for msg in st.session_state.messages:
         if msg["role"] == "trace":
             render_trace_message(msg.get("question", ""), msg.get("answer", ""))

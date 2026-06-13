@@ -664,6 +664,26 @@ class EssilorAgent:
                 return field
         return None
 
+    def progress(self) -> dict[str, Any]:
+        """Avancement du parcours pour l'aperçu live (barre + questions restantes).
+
+        Le flow depend de la famille (deduite de l'age) et des branches
+        conditionnelles, donc le total peut evoluer au fil des reponses.
+        """
+        flow = self._scenario_flow()
+        answered = [field for field in flow if self._field_answered(field)]
+        remaining = [field for field in flow if not self._field_answered(field)]
+        total = len(flow)
+        done = self.last_recommendation is not None
+        return {
+            "answered": total if done else len(answered),
+            "total": total,
+            "ratio": 1.0 if done else (len(answered) / total if total else 0.0),
+            "remaining_fields": [] if done else remaining,
+            "remaining_questions": [] if done else [FIELD_QUESTIONS.get(field, field) for field in remaining],
+            "done": done,
+        }
+
     def _infer_profile_updates(self, user_message: str) -> dict[str, Any]:
         normalized = _norm(user_message)
         updates: dict[str, Any] = {}
