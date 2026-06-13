@@ -362,6 +362,41 @@ def format_axis(value: int) -> str:
     return "---" if int(value) == 0 else str(int(value))
 
 
+# Champs ordonnance : (cle, libelle, min, max, pas, entier ?)
+RX_FIELDS = [
+    ("od_sph", "OD · Sphere", -20.0, 20.0, 0.25, False),
+    ("od_axis", "OD · Axe", 0, 180, 1, True),
+    ("od_add", "OD · Addition", 0.0, 4.0, 0.25, False),
+    ("og_sph", "OG · Sphere", -20.0, 20.0, 0.25, False),
+    ("og_axis", "OG · Axe", 0, 180, 1, True),
+    ("og_add", "OG · Addition", 0.0, 4.0, 0.25, False),
+]
+
+
+def _step_rx(key, delta, lo, hi, is_int):
+    current = st.session_state.get(f"rx_{key}", 0) or 0
+    value = min(hi, max(lo, current + delta))
+    st.session_state[f"rx_{key}"] = int(value) if is_int else round(value, 2)
+
+
+def render_rx_stepper(key, label, lo, hi, step, is_int):
+    """Un champ de correction avec boutons - / + autour de la saisie."""
+    st.session_state.setdefault(f"rx_{key}", 0 if is_int else 0.0)
+    st.markdown(f'<div class="rx-head" style="margin-top:6px">{label}</div>', unsafe_allow_html=True)
+    minus, mid, plus = st.columns([1, 3, 1])
+    minus.button("−", key=f"rxm_{key}", on_click=_step_rx, args=(key, -step, lo, hi, is_int), use_container_width=True)
+    if is_int:
+        mid.number_input(label, min_value=int(lo), max_value=int(hi), step=int(step), key=f"rx_{key}", label_visibility="collapsed")
+    else:
+        mid.number_input(label, min_value=lo, max_value=hi, step=step, format="%.2f", key=f"rx_{key}", label_visibility="collapsed")
+    plus.button("+", key=f"rxp_{key}", on_click=_step_rx, args=(key, step, lo, hi, is_int), use_container_width=True)
+
+
+def reset_rx_fields():
+    for key, *_ in RX_FIELDS:
+        st.session_state.pop(f"rx_{key}", None)
+
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "reco" not in st.session_state:
@@ -384,6 +419,7 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.reco = None
         st.session_state.agent = new_agent()
+        reset_rx_fields()
         st.rerun()
     st.divider()
     st.session_state.expert_mode = st.toggle("Mode expert", value=st.session_state.get("expert_mode", True))
@@ -426,30 +462,22 @@ current_field = current_agent_field()
 with main_col:
     if not disabled and current_field == "correction_total":
         st.markdown('<div class="rx-form-wrap"><p class="rx-form-title">Ordonnance OD / OG</p></div>', unsafe_allow_html=True)
-        with st.form("rx_form", clear_on_submit=True):
-            h0, h1, h2, h3 = st.columns([0.8, 1.6, 1.6, 1.6])
-            h0.markdown("")
-            h1.markdown('<div class="rx-head">Sph</div>', unsafe_allow_html=True)
-            h2.markdown('<div class="rx-head">Axe</div>', unsafe_allow_html=True)
-            h3.markdown('<div class="rx-head">Add</div>', unsafe_allow_html=True)
-            r0, r1, r2, r3 = st.columns([0.8, 1.6, 1.6, 1.6])
-            r0.markdown('<div class="rx-eye">OD</div>', unsafe_allow_html=True)
-            od_sph = r1.number_input("OD Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-            od_axis = r2.number_input("OD Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
-            od_add = r3.number_input("OD Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-            g0, g1, g2, g3 = st.columns([0.8, 1.6, 1.6, 1.6])
-            g0.markdown('<div class="rx-eye">OG</div>', unsafe_allow_html=True)
-            og_sph = g1.number_input("OG Sph", min_value=-20.0, max_value=20.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-            og_axis = g2.number_input("OG Axe", min_value=0, max_value=180, value=0, step=1, label_visibility="collapsed")
-            og_add = g3.number_input("OG Add", min_value=0.0, max_value=4.0, value=0.0, step=0.25, format="%.2f", label_visibility="collapsed")
-            submit_rx = st.form_submit_button("Valider l'ordonnance", use_container_width=True)
-        if submit_rx:
+        for key, label, lo, hi, step, is_int in RX_FIELDS:
+            render_rx_stepper(key, label, lo, hi, step, is_int)
+        if st.button("Valider l'ordonnance", use_container_width=True, type="primary"):
+            od_sph = st.session_state["rx_od_sph"]
+            od_axis = st.session_state["rx_od_axis"]
+            od_add = st.session_state["rx_od_add"]
+            og_sph = st.session_state["rx_og_sph"]
+            og_axis = st.session_state["rx_og_axis"]
+            og_add = st.session_state["rx_og_add"]
             add_value = max(float(od_add), float(og_add))
             message = f"OD Sph {format_rx_number(od_sph)} Axe {format_axis(od_axis)} OG Sph {format_rx_number(og_sph)} Axe {format_axis(og_axis)}"
             display = f"OD Sph {format_rx_number(od_sph)} | OD Axe {format_axis(od_axis)} | OG Sph {format_rx_number(og_sph)} | OG Axe {format_axis(og_axis)}"
             if add_value > 0:
                 message += f" ADD {format_rx_number(add_value)}"
                 display += f" | Add {format_rx_number(add_value)}"
+            reset_rx_fields()
             submit_to_agent(message, display)
     elif not disabled and current_field in CHOICE_FIELDS:
         render_choice_buttons(current_field)
