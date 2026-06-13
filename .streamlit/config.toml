@@ -1,0 +1,7 @@
+# Theme global Optiflow Best Solution (boutons, inputs, barre de progression...).
+[theme]
+primaryColor = "#0F6E56"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5FAF8"
+textColor = "#1A2B26"
+font = "sans serif"

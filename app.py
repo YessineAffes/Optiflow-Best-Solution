@@ -23,22 +23,40 @@ def new_agent():
 st.markdown(
     """
 <style>
-.header-box{background:#0F6E56;border-radius:14px;padding:18px 24px;margin-bottom:20px;display:flex;align-items:center;gap:14px}
-.header-title{color:white;font-size:18px;font-weight:600;margin:0}
-.header-sub{color:rgba(255,255,255,.75);font-size:13px;margin:0}
-.badge{display:inline-block;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;margin-left:6px}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+html,body,[class*="css"]{font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-serif}
+.block-container{padding-top:1.4rem}
+.header-box{background:linear-gradient(135deg,#0F6E56 0%,#14876C 100%);border-radius:16px;padding:18px 24px;margin-bottom:20px;display:flex;align-items:center;gap:14px;box-shadow:0 6px 18px rgba(15,110,86,.18)}
+.header-title{color:white;font-size:19px;font-weight:700;margin:0;letter-spacing:.2px}
+.header-sub{color:rgba(255,255,255,.78);font-size:13px;margin:6px 0 0}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-right:6px}
 .badge-sf{background:#EAF3DE;color:#3B6D11}.badge-ey{background:#E6F1FB;color:#185FA5}.badge-vx{background:#EEEDFE;color:#534AB7}
-.user-msg{background:#0F6E56;color:white;border-radius:14px 14px 4px 14px;padding:10px 16px;margin:6px 0 12px 75px;font-size:14px;line-height:1.6}
-.bot-msg{background:#f4f4f4;color:#1a1a1a;border-radius:14px 14px 14px 4px;padding:10px 16px;margin:8px 75px 6px 0;font-size:14px;line-height:1.6}
-.rx-form-wrap{background:#fff;border:1px solid #cfcfcf;border-radius:6px;padding:10px 12px 12px;margin:8px 0 10px}
-.rx-form-title{color:#0F6E56;font-size:17px;font-weight:700;margin:0}
+/* --- Bulles de chat avec avatars --- */
+.msg-row{display:flex;align-items:flex-end;gap:8px;margin:7px 0}
+.msg-row.bot{justify-content:flex-start}.msg-row.user{justify-content:flex-end}
+.avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.avatar-bot{background:#0F6E56;color:#fff}.avatar-user{background:#E6F1FB}
+.user-msg{background:#0F6E56;color:white;border-radius:16px 16px 4px 16px;padding:10px 15px;font-size:14px;line-height:1.55;max-width:78%;box-shadow:0 1px 4px rgba(15,110,86,.2)}
+.bot-msg{background:#fff;color:#1a2b26;border:1px solid #e7ece9;border-radius:16px 16px 16px 4px;padding:10px 15px;font-size:14px;line-height:1.55;max-width:78%;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.rx-form-wrap{background:#fff;border:1px solid #e7ece9;border-radius:12px;padding:12px 14px 14px;margin:10px 0;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.rx-form-title{color:#0F6E56;font-size:16px;font-weight:700;margin:0}
 .rx-head{color:#555;font-size:12px;font-weight:700;padding:0 0 2px}.rx-eye{font-size:13px;font-weight:700;color:#111;padding-top:7px}
-.live-preview{border:1px solid #dce7e3;border-radius:8px;overflow:hidden;margin:0 0 14px;background:#fff;position:sticky;top:14px}
-.live-preview-head{background:#f5faf8;border-bottom:1px solid #dce7e3;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.live-preview{border:1px solid #dce7e3;border-radius:14px;overflow:hidden;margin:0 0 14px;background:#fff;position:sticky;top:14px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.live-preview-head{background:#f5faf8;border-bottom:1px solid #dce7e3;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .live-preview-title{color:#0F6E56;font-size:14px;font-weight:700;margin:0}.live-preview-step{color:#66736f;font-size:12px;margin:0}
-.live-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid #eee}.live-item{padding:10px 12px;border-right:1px solid #eee;min-height:58px}.live-item:nth-child(2n),.live-item:last-child{border-right:0}
-.live-label{color:#7b8582;font-size:11px;margin:0 0 4px}.live-value{color:#1a1a1a;font-size:13px;font-weight:650;margin:0;word-break:break-word}.live-muted{color:#9a9a9a;font-weight:500}.live-question{padding:10px 14px;color:#26332f;font-size:13px}
-.reco-card{border:1.5px solid;border-radius:14px;overflow:hidden;margin:12px 0}.reco-header{padding:14px 18px}.reco-body{padding:14px 18px;background:white}.reco-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.reco-item{background:#f5f5f5;border-radius:10px;padding:10px 12px}.reco-label{font-size:11px;color:#888;margin:0 0 3px}.reco-value{font-size:14px;font-weight:600;margin:0}.reco-just{border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;line-height:1.55}
+.live-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid #eee}.live-item{padding:11px 14px;border-right:1px solid #eee;min-height:58px}.live-item:nth-child(2n),.live-item:last-child{border-right:0}
+.live-label{color:#7b8582;font-size:11px;margin:0 0 4px}.live-value{color:#1a1a1a;font-size:13px;font-weight:650;margin:0;word-break:break-word}.live-muted{color:#9a9a9a;font-weight:500}.live-question{padding:12px 16px;color:#26332f;font-size:13px}
+.reco-card{border:1.5px solid;border-radius:16px;overflow:hidden;margin:12px 0;box-shadow:0 4px 16px rgba(0,0,0,.07)}.reco-header{padding:14px 18px}.reco-body{padding:14px 18px;background:white}.reco-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.reco-item{background:#f5f7f6;border-radius:12px;padding:10px 12px}.reco-label{font-size:11px;color:#888;margin:0 0 3px}.reco-value{font-size:14px;font-weight:600;margin:0}.reco-just{border-radius:12px;padding:10px 14px;margin-top:10px;font-size:13px;line-height:1.55}
+/* --- Responsive mobile --- */
+@media (max-width:640px){
+  .header-box{padding:14px 16px;border-radius:14px}
+  .header-title{font-size:16px}.header-sub{font-size:12px}
+  .user-msg,.bot-msg{max-width:88%;font-size:13.5px}
+  .live-preview{position:static}
+  .live-grid{grid-template-columns:1fr}
+  .live-item{border-right:0;border-bottom:1px solid #eee;min-height:auto}
+  .reco-grid{grid-template-columns:1fr}
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -166,12 +184,20 @@ def render_live_preview():
     )
 
 
+def bot_bubble(text: str) -> str:
+    return f'<div class="msg-row bot"><div class="avatar avatar-bot">👁️</div><div class="bot-msg">{html_text(text)}</div></div>'
+
+
+def user_bubble(text: str) -> str:
+    return f'<div class="msg-row user"><div class="user-msg">{html_text(text)}</div><div class="avatar avatar-user">🧑</div></div>'
+
+
 def render_bot_message(text: str):
-    st.markdown(f'<div class="bot-msg">{html_text(text)}</div>', unsafe_allow_html=True)
+    st.markdown(bot_bubble(text), unsafe_allow_html=True)
 
 
 def render_trace_message(question: str, answer: str):
-    st.markdown(f'<div class="bot-msg">{html_text(question)}</div><div class="user-msg">{html_text(answer)}</div>', unsafe_allow_html=True)
+    st.markdown(bot_bubble(question) + user_bubble(answer), unsafe_allow_html=True)
 
 
 def render_reco(reco: dict):
@@ -350,7 +376,7 @@ with main_col:
         if msg["role"] == "trace":
             render_trace_message(msg.get("question", ""), msg.get("answer", ""))
         elif msg["role"] == "user":
-            st.markdown(f'<div class="user-msg">{html_text(msg["text"])}</div>', unsafe_allow_html=True)
+            st.markdown(user_bubble(msg["text"]), unsafe_allow_html=True)
         else:
             render_bot_message(msg["text"])
     if st.session_state.reco:
