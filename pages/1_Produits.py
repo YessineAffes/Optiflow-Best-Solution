@@ -29,10 +29,15 @@ if not store.enabled:
 
 with st.form("add_product", clear_on_submit=True):
     st.subheader("Ajouter un produit")
-    c1, c2, c3 = st.columns(3)
-    advantage = c1.text_input("Avantage", placeholder="ex: Vision large, confort")
+    c2, c3 = st.columns(2)
     family_label = c2.selectbox("Famille", list(FAMILIES.keys()))
     lens_type = c3.text_input("Type de verre", placeholder="ex: Varilux XR Design")
+
+    advantage = st.text_area(
+        "Avantage",
+        placeholder="ex: Vision large, confort, transitions douces...",
+        height=120,
+    )
 
     c4, c5, c6 = st.columns(3)
     index = c4.selectbox("Indice", ["", "1.50", "1.56", "1.60", "1.67"])
