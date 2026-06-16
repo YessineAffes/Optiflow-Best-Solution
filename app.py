@@ -379,17 +379,16 @@ def _step_rx(key, delta, lo, hi, is_int):
     st.session_state[f"rx_{key}"] = int(value) if is_int else round(value, 2)
 
 
-def render_rx_stepper(key, label, lo, hi, step, is_int):
-    """Un champ de correction avec boutons - / + autour de la saisie."""
+def render_rx_cell(minus_col, mid_col, plus_col, key, label, lo, hi, step, is_int):
+    """Une cellule de correction : boutons - / + autour de la saisie, repartis sur
+    trois colonnes deja creees (evite d'imbriquer des colonnes dans des colonnes)."""
     st.session_state.setdefault(f"rx_{key}", 0 if is_int else 0.0)
-    st.markdown(f'<div class="rx-head" style="margin-top:6px">{label}</div>', unsafe_allow_html=True)
-    minus, mid, plus = st.columns([1, 3, 1])
-    minus.button("−", key=f"rxm_{key}", on_click=_step_rx, args=(key, -step, lo, hi, is_int), use_container_width=True)
+    minus_col.button("−", key=f"rxm_{key}", on_click=_step_rx, args=(key, -step, lo, hi, is_int), use_container_width=True)
     if is_int:
-        mid.number_input(label, min_value=int(lo), max_value=int(hi), step=int(step), key=f"rx_{key}", label_visibility="collapsed")
+        mid_col.number_input(label, min_value=int(lo), max_value=int(hi), step=int(step), key=f"rx_{key}", label_visibility="collapsed")
     else:
-        mid.number_input(label, min_value=lo, max_value=hi, step=step, format="%.2f", key=f"rx_{key}", label_visibility="collapsed")
-    plus.button("+", key=f"rxp_{key}", on_click=_step_rx, args=(key, step, lo, hi, is_int), use_container_width=True)
+        mid_col.number_input(label, min_value=lo, max_value=hi, step=step, format="%.2f", key=f"rx_{key}", label_visibility="collapsed")
+    plus_col.button("+", key=f"rxp_{key}", on_click=_step_rx, args=(key, step, lo, hi, is_int), use_container_width=True)
 
 
 def reset_rx_fields():
@@ -460,8 +459,17 @@ current_field = current_agent_field()
 with main_col:
     if not disabled and current_field == "correction_total":
         st.markdown('<div class="rx-form-wrap"><p class="rx-form-title">Ordonnance OD / OG</p></div>', unsafe_allow_html=True)
-        for key, label, lo, hi, step, is_int in RX_FIELDS:
-            render_rx_stepper(key, label, lo, hi, step, is_int)
+        # Grille : une ligne par oeil (OD / OG), une colonne par parametre
+        # (Sphere / Axe / Addition). Chaque cellule = boutons - / + + saisie.
+        head = st.columns([0.7, 4, 4, 4])
+        for col, title in zip(head[1:], ["Sphere", "Axe", "Addition"]):
+            col.markdown(f'<div class="rx-head" style="text-align:center">{title}</div>', unsafe_allow_html=True)
+        for eye, fields in (("OD", RX_FIELDS[0:3]), ("OG", RX_FIELDS[3:6])):
+            cols = st.columns([0.7, 1, 2, 1, 1, 2, 1, 1, 2, 1])
+            cols[0].markdown(f'<div class="rx-eye">{eye}</div>', unsafe_allow_html=True)
+            for i, (key, label, lo, hi, step, is_int) in enumerate(fields):
+                b = 1 + i * 3
+                render_rx_cell(cols[b], cols[b + 1], cols[b + 2], key, label, lo, hi, step, is_int)
         if st.button("Valider l'ordonnance", use_container_width=True, type="primary"):
             od_sph = st.session_state["rx_od_sph"]
             od_axis = st.session_state["rx_od_axis"]
