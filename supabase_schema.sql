@@ -4,20 +4,37 @@
 
 -- 1) Catalogue produits (verres)
 create table if not exists public.products (
-    id          uuid primary key default gen_random_uuid(),
-    reference   text,
-    family      text check (family in ('simple_foyer', 'eyezen', 'varilux')),
-    lens_type   text not null,
-    index       text,
-    treatment   text,
-    transition  text,
-    geometry    text,
-    price       numeric(10, 2),
-    notes       text,
-    created_at  timestamptz not null default now()
+    id              uuid primary key default gen_random_uuid(),
+    advantage       text,
+    family          text check (family in ('simple_foyer', 'eyezen', 'varilux')),
+    lens_type       text not null,
+    index           text,
+    treatment       text,
+    transition      text,
+    geometry        text,
+    recommended_for text,
+    created_at      timestamptz not null default now()
 );
 
 create index if not exists products_family_idx on public.products (family);
+
+-- Migration des bases existantes (renommage des champs + suppression du prix).
+-- Idempotent : ne renomme que si l'ancienne colonne existe encore.
+do $$
+begin
+    if exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'products'
+                 and column_name = 'reference') then
+        alter table public.products rename column reference to advantage;
+    end if;
+    if exists (select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'products'
+                 and column_name = 'notes') then
+        alter table public.products rename column notes to recommended_for;
+    end if;
+end $$;
+
+alter table public.products drop column if exists price;
 
 -- 2) Annotations expert : une note + un statut de verification par question
 create table if not exists public.expert_annotations (

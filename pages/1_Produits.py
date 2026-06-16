@@ -30,7 +30,7 @@ if not store.enabled:
 with st.form("add_product", clear_on_submit=True):
     st.subheader("Ajouter un produit")
     c1, c2, c3 = st.columns(3)
-    reference = c1.text_input("Reference", placeholder="ex: VX-XR-160")
+    advantage = c1.text_input("Avantage", placeholder="ex: Vision large, confort")
     family_label = c2.selectbox("Famille", list(FAMILIES.keys()))
     lens_type = c3.text_input("Type de verre", placeholder="ex: Varilux XR Design")
 
@@ -39,11 +39,9 @@ with st.form("add_product", clear_on_submit=True):
     treatment = c5.text_input("Traitement", placeholder="ex: Crizal Easy Pro")
     transition = c6.selectbox("Transition", ["", "Blanc", "Transition", "Solaire"])
 
-    c7, c8 = st.columns(2)
-    geometry = c7.selectbox("Geometrie", ["", "Regular", "Short"])
-    price = c8.number_input("Prix (DT)", min_value=0.0, step=1.0, format="%.2f")
+    geometry = st.selectbox("Geometrie", ["", "Regular", "Short"])
 
-    notes = st.text_area("Notes", placeholder="Details, indications, restrictions...")
+    recommended_for = st.text_area("A qui recommander", placeholder="Profils, besoins, indications...")
     submitted = st.form_submit_button("Enregistrer le produit", use_container_width=True)
 
 if submitted:
@@ -51,15 +49,14 @@ if submitted:
         st.error("Le type de verre est obligatoire.")
     else:
         product = {
-            "reference": reference.strip() or None,
+            "advantage": advantage.strip() or None,
             "family": FAMILIES[family_label],
             "lens_type": lens_type.strip(),
             "index": index or None,
             "treatment": treatment.strip() or None,
             "transition": transition or None,
             "geometry": geometry or None,
-            "price": float(price) if price else None,
-            "notes": notes.strip() or None,
+            "recommended_for": recommended_for.strip() or None,
         }
         if store.add_product(product):
             st.success(f"Produit « {lens_type} » enregistre.")
@@ -80,12 +77,11 @@ else:
     label_by_value = {value: label for label, value in FAMILIES.items()}
     for product in products:
         cols = st.columns([3, 2, 1.5, 1.5, 1.5, 1])
-        cols[0].markdown(f"**{product.get('lens_type', '')}**  \n{product.get('reference') or ''}")
+        cols[0].markdown(f"**{product.get('lens_type', '')}**  \n{product.get('advantage') or ''}")
         cols[1].write(label_by_value.get(product.get("family"), product.get("family") or "-"))
         cols[2].write(f"Indice {product.get('index') or '-'}")
         cols[3].write(product.get("treatment") or "-")
-        price = product.get("price")
-        cols[4].write(f"{float(price):.2f} DT" if price is not None else "-")
+        cols[4].write(product.get("recommended_for") or "-")
         if cols[5].button("🗑️", key=f"del_{product.get('id')}", help="Supprimer"):
             if store.delete_product(product.get("id")):
                 st.rerun()

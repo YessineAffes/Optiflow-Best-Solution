@@ -432,8 +432,6 @@ with st.sidebar:
 main_col, preview_col = st.columns([1.25, 1], gap="large")
 
 with preview_col:
-    agent_mode = "LLM + RAG + tools" if getattr(st.session_state.agent, "llm", None) is not None else "Fallback local"
-    st.caption(f"Mode agent : {agent_mode}")
     render_live_progress()
     render_live_preview()
 
