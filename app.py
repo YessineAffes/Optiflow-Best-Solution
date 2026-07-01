@@ -3,7 +3,18 @@ import html
 import streamlit as st
 
 import db
-from agent import EssilorAgent, FIELD_QUESTIONS, LocalDocRAG, apply_price_downgrade, build_document_recommendation
+from agent import (
+    EssilorAgent,
+    FIELD_QUESTIONS,
+    LocalDocRAG,
+    MAIN_NEED_LABELS,
+    OCULAR_CHOICES,
+    TRANSITION_LABEL,
+    apply_price_downgrade,
+    build_document_recommendation,
+    display_transition,
+    family_from_lens_type,
+)
 
 
 st.set_page_config(page_title="Optiflow Best Solution", page_icon="👁️", layout="wide", initial_sidebar_state="collapsed")
@@ -76,7 +87,7 @@ def question_step_label(question: str) -> str:
     if "besoin" in normalized:
         return "Besoin principal"
     if "soleil" in normalized or "transition" in normalized or "solaire" in normalized:
-        return "Transition / soleil"
+        return "Couleur / soleil"
     if "oculaire" in normalized:
         return "Sante oculaire"
     if "ordinateur" in normalized:
@@ -159,6 +170,7 @@ def render_live_preview():
     live_index = reco.get("index", defaults["indice"] if has_age else "")
     live_treatment = reco.get("treatment", defaults["traitement"] if has_age else "")
     live_transition = reco.get("transition", defaults["transition"] if has_age else "")
+    live_transition = display_transition(live_transition) if live_transition else ""
     live_geometry = reco.get("geometrie", defaults["geometrie"] if has_age else "")
     if has_age and family != "Varilux":
         live_geometry = "Non applicable"
@@ -171,10 +183,10 @@ def render_live_preview():
         <p class="live-preview-step">Etape actuelle : {html_text(question_step_label(question))}</p>
       </div>
       <div class="live-grid">
-        <div class="live-item"><p class="live-label">Type</p><p class="live-value">{live_value_html(live_type)}</p></div>
+        <div class="live-item"><p class="live-label">Design</p><p class="live-value">{live_value_html(live_type)}</p></div>
         <div class="live-item"><p class="live-label">Indice</p><p class="live-value">{live_value_html(live_index)}</p></div>
         <div class="live-item"><p class="live-label">Traitement</p><p class="live-value">{live_value_html(live_treatment)}</p></div>
-        <div class="live-item"><p class="live-label">Transition</p><p class="live-value">{live_value_html(live_transition)}</p></div>
+        <div class="live-item"><p class="live-label">{TRANSITION_LABEL}</p><p class="live-value">{live_value_html(live_transition)}</p></div>
       </div>
       <div class="live-item" style="margin-top:10px"><p class="live-label">Geometrie</p><p class="live-value">{live_value_html(live_geometry)}</p></div>
       <div class="live-question"><strong>Question en cours :</strong> {html_text(question)}</div>
@@ -202,22 +214,23 @@ def render_trace_message(question: str, answer: str):
 
 def render_reco(reco: dict):
     lens_type = reco.get("lens_type", "")
-    family = "Varilux" if "Varilux" in lens_type else ("Eyezen" if "Eyezen" in lens_type else "Simple Foyer")
+    family = family_from_lens_type(lens_type)
     palette = {"Simple Foyer": ("#EAF3DE", "#3B6D11", "#639922"), "Eyezen": ("#E6F1FB", "#185FA5", "#378ADD"), "Varilux": ("#EEEDFE", "#534AB7", "#7F77DD")}
     bg, txt, border = palette[family]
     rationale = reco.get("rationale", [])
     rationale_items = "".join(f"<li>{html_text(item)}</li>" for item in rationale)
     geometry = reco.get("geometrie", "") if family == "Varilux" else "Non applicable"
+    transition_display = display_transition(reco.get("transition", ""))
     st.markdown(
         f"""
     <div class="reco-card" style="border-color:{border}">
       <div class="reco-header" style="background:{bg}"><strong style="color:{txt}">Recommandation finalisee</strong><br><span style="color:{txt};opacity:.75;font-size:13px">{html_text(lens_type)}</span></div>
       <div class="reco-body">
         <div class="reco-grid">
-          <div class="reco-item"><p class="reco-label">Type</p><p class="reco-value">{html_text(lens_type)}</p></div>
+          <div class="reco-item"><p class="reco-label">Design</p><p class="reco-value">{html_text(lens_type)}</p></div>
           <div class="reco-item"><p class="reco-label">Indice</p><p class="reco-value">{html_text(reco.get("index", ""))}</p></div>
           <div class="reco-item"><p class="reco-label">Traitement</p><p class="reco-value">{html_text(reco.get("treatment", ""))}</p></div>
-          <div class="reco-item"><p class="reco-label">Transition</p><p class="reco-value">{html_text(reco.get("transition", ""))}</p></div>
+          <div class="reco-item"><p class="reco-label">{TRANSITION_LABEL}</p><p class="reco-value">{html_text(transition_display)}</p></div>
         </div>
         <div class="reco-item" style="margin-top:10px"><p class="reco-label">Geometrie</p><p class="reco-value">{html_text(geometry)}</p></div>
         <div class="reco-just"><p class="reco-label">Justification</p><ul style="margin:6px 0 0 18px;padding:0">{rationale_items}</ul></div>
@@ -232,11 +245,11 @@ def render_reco(reco: dict):
     attempts = int(optimization.get("attempts", 0) or 0)
     max_attempts = int(optimization.get("maxAttempts", 2) or 2)
     if downgrades and attempts < max_attempts:
-        labels = {"type": "Type de verre", "treatment": "Traitement", "transition": "Transition"}
+        labels = {"type": "Design", "treatment": "Traitement", "transition": TRANSITION_LABEL}
         current_values = {
             "type": reco.get("lens_type", ""),
             "treatment": reco.get("treatment", ""),
-            "transition": reco.get("transition", ""),
+            "transition": display_transition(reco.get("transition", "")),
         }
         st.markdown(
             f"""
@@ -259,16 +272,23 @@ def render_reco(reco: dict):
 
 CHOICE_FIELDS = {
     "frame_type": [("Perce", "perce"), ("Nylor", "nylor"), ("Plastique", "plastique"), ("Metallique", "metallique")],
-    "main_need": [("Transparence", "transparence"), ("Lumiere bleue", "lumiere bleue"), ("Conduite soir/nuit", "conduite soir"), ("Rayures", "rayures"), ("Nettoyage", "nettoyage")],
+    # Libelles affiches = nouveaux intitules ; valeurs techniques inchangees.
+    "main_need": [
+        (MAIN_NEED_LABELS["transparence"], "transparence"),
+        (MAIN_NEED_LABELS["lumiere_bleue"], "lumiere bleue"),
+        (MAIN_NEED_LABELS["conduite_soir"], "conduite soir"),
+        (MAIN_NEED_LABELS["rayures"], "rayures"),
+        (MAIN_NEED_LABELS["nettoyage"], "nettoyage"),
+    ],
     "postural_comfort": [("Oui", "oui"), ("Non", "non")],
     "near_intermediate_comfort": [("Oui", "oui"), ("Non", "non")],
     "innovation_sensitive": [("Oui", "oui"), ("Non", "non")],
     "sun_exposure": [("Oui", "oui"), ("Non", "non")],
     "sun_discomfort": [("Oui", "oui"), ("Non", "non")],
-    "sun_solution": [("Solaire", "solaire"), ("Transition", "transition")],
+    "sun_solution": [("Solaire", "solaire"), ("Gen S", "transition")],
     "head_eye_behavior": [("Tete", "tete"), ("Yeux", "yeux")],
     "computer_usage": [("Ordinateur de bureau", "ordinateur de bureau"), ("Ordinateur portable", "ordinateur portable")],
-    "ocular_health": [("RAS", "ras"), ("Cataracte", "cataracte"), ("Glaucome", "glaucome"), ("DMLA", "dmla"), ("Pseudophaque", "pseudophaque"), ("Conjonctivite", "conjonctivite"), ("Retinopathie diabetique", "retinopathie diabetique"), ("Arthrose", "arthrose")],
+    # ocular_health n'est plus un bouton simple : maladies en selection multiple.
 }
 
 
@@ -278,7 +298,7 @@ def submit_to_agent(user_text: str, display_text: str | None = None):
     st.session_state.messages.append({"role": "trace", "question": asked_question, "answer": display_text or user_text, "text": display_text or user_text})
     reply, reco = st.session_state.agent.chat(user_text)
     structured_field = current_agent_field()
-    if reply and not (structured_field == "correction_total" or structured_field in CHOICE_FIELDS):
+    if reply and not (structured_field in {"correction_total", "ocular_health"} or structured_field in CHOICE_FIELDS):
         st.session_state.messages.append({"role": "bot", "text": reply})
     if reco:
         st.session_state.reco = reco
@@ -325,12 +345,12 @@ def render_evaluation_panel(reco: dict):
     """
     store = db.get_store()
     lens_type = reco.get("lens_type", "")
-    is_varilux = "Varilux" in lens_type
+    is_varilux = family_from_lens_type(lens_type) == "Varilux"
     fields = [
-        ("type_ok", "Type", lens_type),
+        ("type_ok", "Design", lens_type),
         ("treatment_ok", "Traitement", reco.get("treatment", "")),
         ("index_ok", "Indice", reco.get("index", "")),
-        ("transition_ok", "Transition", reco.get("transition", "")),
+        ("transition_ok", TRANSITION_LABEL, display_transition(reco.get("transition", ""))),
     ]
     if is_varilux:
         fields.append(("geometry_ok", "Geometrie", reco.get("geometrie", "")))
@@ -354,46 +374,48 @@ def render_evaluation_panel(reco: dict):
                 st.error(f"Echec de l'enregistrement : {store.last_error or 'base indisponible'}")
 
 
-def format_rx_number(value: float) -> str:
-    return f"{float(value):.2f}"
-
-
 def format_axis(value: int) -> str:
     return "---" if int(value) == 0 else str(int(value))
 
 
-# Champs ordonnance : (cle, libelle, min, max, pas, entier ?)
-RX_FIELDS = [
-    ("od_sph", "OD · Sphere", -20.0, 20.0, 0.25, False),
-    ("od_axis", "OD · Axe", 0, 180, 1, True),
-    ("od_add", "OD · Addition", 0.0, 4.0, 0.25, False),
-    ("og_sph", "OG · Sphere", -20.0, 20.0, 0.25, False),
-    ("og_axis", "OG · Axe", 0, 180, 1, True),
-    ("og_add", "OG · Addition", 0.0, 4.0, 0.25, False),
+# Nouveau format des corrections : centiemes entiers, sans separateur decimal.
+# 200 = +2.00 D, -175 = -1.75 D. L'axe reste en degres (non converti).
+# Parametres par oeil : (cle, libelle, min, max, pas). "add" (addition) n'est
+# affiche que pour les verres progressifs (famille Varilux) -> voir RX_ADD_PARAM.
+EYES = ("od", "og")
+RX_BASE_PARAMS = [
+    ("sph", "Sph", -2000, 2000, 25),
+    ("cyl", "Cyl", -1000, 1000, 25),
+    ("axis", "Axe", 0, 180, 1),
 ]
+RX_ADD_PARAM = ("add", "Add", 0, 400, 25)
 
 
-def _step_rx(key, delta, lo, hi, is_int):
+def rx_params_for_family(family: str) -> list[tuple[str, str, int, int, int]]:
+    """Parametres de saisie ; l'addition uniquement pour les verres progressifs."""
+    params = list(RX_BASE_PARAMS)
+    if family == "Varilux":
+        params.append(RX_ADD_PARAM)
+    return params
+
+
+def _step_rx(key, delta, lo, hi):
     current = st.session_state.get(f"rx_{key}", 0) or 0
-    value = min(hi, max(lo, current + delta))
-    st.session_state[f"rx_{key}"] = int(value) if is_int else round(value, 2)
+    st.session_state[f"rx_{key}"] = int(min(hi, max(lo, current + delta)))
 
 
-def render_rx_cell(minus_col, mid_col, plus_col, key, label, lo, hi, step, is_int):
-    """Une cellule de correction : boutons - / + autour de la saisie, repartis sur
-    trois colonnes deja creees (evite d'imbriquer des colonnes dans des colonnes)."""
-    st.session_state.setdefault(f"rx_{key}", 0 if is_int else 0.0)
-    minus_col.button("−", key=f"rxm_{key}", on_click=_step_rx, args=(key, -step, lo, hi, is_int), use_container_width=True)
-    if is_int:
-        mid_col.number_input(label, min_value=int(lo), max_value=int(hi), step=int(step), key=f"rx_{key}", label_visibility="collapsed")
-    else:
-        mid_col.number_input(label, min_value=lo, max_value=hi, step=step, format="%.2f", key=f"rx_{key}", label_visibility="collapsed")
-    plus_col.button("+", key=f"rxp_{key}", on_click=_step_rx, args=(key, step, lo, hi, is_int), use_container_width=True)
+def render_rx_cell(minus_col, mid_col, plus_col, key, label, lo, hi, step):
+    """Une cellule de correction (centiemes entiers) : boutons - / + + saisie."""
+    st.session_state.setdefault(f"rx_{key}", 0)
+    minus_col.button("−", key=f"rxm_{key}", on_click=_step_rx, args=(key, -step, lo, hi), use_container_width=True)
+    mid_col.number_input(label, min_value=int(lo), max_value=int(hi), step=int(step), key=f"rx_{key}", label_visibility="collapsed")
+    plus_col.button("+", key=f"rxp_{key}", on_click=_step_rx, args=(key, step, lo, hi), use_container_width=True)
 
 
 def reset_rx_fields():
-    for key, *_ in RX_FIELDS:
-        st.session_state.pop(f"rx_{key}", None)
+    for eye in EYES:
+        for param, *_ in [*RX_BASE_PARAMS, RX_ADD_PARAM]:
+            st.session_state.pop(f"rx_{eye}_{param}", None)
 
 
 if "messages" not in st.session_state:
@@ -459,32 +481,52 @@ current_field = current_agent_field()
 with main_col:
     if not disabled and current_field == "correction_total":
         st.markdown('<div class="rx-form-wrap"><p class="rx-form-title">Ordonnance OD / OG</p></div>', unsafe_allow_html=True)
-        # Grille : une ligne par oeil (OD / OG), une colonne par parametre
-        # (Sphere / Axe / Addition). Chaque cellule = boutons - / + + saisie.
-        head = st.columns([0.7, 4, 4, 4])
-        for col, title in zip(head[1:], ["Sphere", "Axe", "Addition"]):
-            col.markdown(f'<div class="rx-head" style="text-align:center">{title}</div>', unsafe_allow_html=True)
-        for eye, fields in (("OD", RX_FIELDS[0:3]), ("OG", RX_FIELDS[3:6])):
-            cols = st.columns([0.7, 1, 2, 1, 1, 2, 1, 1, 2, 1])
-            cols[0].markdown(f'<div class="rx-eye">{eye}</div>', unsafe_allow_html=True)
-            for i, (key, label, lo, hi, step, is_int) in enumerate(fields):
+        st.caption("Valeurs en centiemes de dioptrie (ex : 200 = +2.00 D, -175 = -1.75 D). L'axe reste en degres.")
+        # Une ligne par oeil (OD / OG), une colonne par parametre. L'addition
+        # n'est proposee que pour les verres progressifs (famille Varilux).
+        rx_params = rx_params_for_family(current_agent_family())
+        col_spec = [0.7] + [1, 2, 1] * len(rx_params)
+        head = st.columns(col_spec)
+        for i, (_, label, *_rest) in enumerate(rx_params):
+            head[1 + i * 3 + 1].markdown(f'<div class="rx-head" style="text-align:center">{label}</div>', unsafe_allow_html=True)
+        for eye in EYES:
+            cols = st.columns(col_spec)
+            cols[0].markdown(f'<div class="rx-eye">{eye.upper()}</div>', unsafe_allow_html=True)
+            for i, (param, label, lo, hi, step) in enumerate(rx_params):
                 b = 1 + i * 3
-                render_rx_cell(cols[b], cols[b + 1], cols[b + 2], key, label, lo, hi, step, is_int)
+                render_rx_cell(cols[b], cols[b + 1], cols[b + 2], f"{eye}_{param}", f"{eye.upper()} · {label}", lo, hi, step)
         if st.button("Valider l'ordonnance", use_container_width=True, type="primary"):
-            od_sph = st.session_state["rx_od_sph"]
-            od_axis = st.session_state["rx_od_axis"]
-            od_add = st.session_state["rx_od_add"]
-            og_sph = st.session_state["rx_og_sph"]
-            og_axis = st.session_state["rx_og_axis"]
-            og_add = st.session_state["rx_og_add"]
-            add_value = max(float(od_add), float(og_add))
-            message = f"OD Sph {format_rx_number(od_sph)} Axe {format_axis(od_axis)} OG Sph {format_rx_number(og_sph)} Axe {format_axis(og_axis)}"
-            display = f"OD Sph {format_rx_number(od_sph)} | OD Axe {format_axis(od_axis)} | OG Sph {format_rx_number(og_sph)} | OG Axe {format_axis(og_axis)}"
-            if add_value > 0:
-                message += f" ADD {format_rx_number(add_value)}"
-                display += f" | Add {format_rx_number(add_value)}"
+            has_add = any(param == "add" for param, *_ in rx_params)
+            message_parts: list[str] = []
+            display_parts: list[str] = []
+            for eye in EYES:
+                sph = int(st.session_state[f"rx_{eye}_sph"])
+                cyl = int(st.session_state[f"rx_{eye}_cyl"])
+                axis = int(st.session_state[f"rx_{eye}_axis"])
+                eye_msg = f"{eye.upper()} Sph {sph} Cyl {cyl} Axe {format_axis(axis)}"
+                display_parts.append(f"{eye.upper()} Sph {sph} | Cyl {cyl} | Axe {format_axis(axis)}")
+                if has_add:
+                    add = int(st.session_state[f"rx_{eye}_add"])
+                    eye_msg += f" Add {add}"
+                    display_parts[-1] += f" | Add {add}"
+                message_parts.append(eye_msg)
             reset_rx_fields()
-            submit_to_agent(message, display)
+            submit_to_agent(" ".join(message_parts), " · ".join(display_parts))
+    elif not disabled and current_field == "ocular_health":
+        st.markdown(
+            f'<div class="rx-form-wrap"><p class="rx-form-title">{html_text(FIELD_QUESTIONS["ocular_health"])}</p></div>',
+            unsafe_allow_html=True,
+        )
+        selected = st.multiselect(
+            "Maladies / pathologies (plusieurs choix possibles)",
+            OCULAR_CHOICES,
+            key="ocular_health_select",
+        )
+        if st.button("Valider la sante oculaire", use_container_width=True, type="primary"):
+            # Selection multiple : on garde toutes les maladies (jamais d'ecrasement).
+            chosen = [item for item in selected if item != "RAS"] or ["RAS"]
+            message = ", ".join(chosen)
+            submit_to_agent(message, message)
     elif not disabled and current_field in CHOICE_FIELDS:
         render_choice_buttons(current_field)
     elif not disabled and current_field:

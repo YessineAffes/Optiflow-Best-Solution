@@ -31,7 +31,7 @@ with st.form("add_product", clear_on_submit=True):
     st.subheader("Ajouter un produit")
     c2, c3 = st.columns(2)
     family_label = c2.selectbox("Famille", list(FAMILIES.keys()))
-    lens_type = c3.text_input("Type de verre", placeholder="ex: Varilux XR Design")
+    lens_type = c3.text_input("Design", placeholder="ex: Varilux XR Design")
 
     advantage = st.text_area(
         "Avantage",
@@ -42,7 +42,7 @@ with st.form("add_product", clear_on_submit=True):
     c4, c5, c6 = st.columns(3)
     index = c4.selectbox("Indice", ["", "1.50", "1.56", "1.60", "1.67"])
     treatment = c5.text_input("Traitement", placeholder="ex: Crizal Easy Pro")
-    transition = c6.selectbox("Transition", ["", "Blanc", "Transition", "Solaire"])
+    transition = c6.selectbox("Couleur", ["", "Blanc", "Gen S", "Solaire"])
 
     geometry = st.selectbox("Geometrie", ["", "Regular", "Short"])
 
@@ -51,7 +51,7 @@ with st.form("add_product", clear_on_submit=True):
 
 if submitted:
     if not lens_type.strip():
-        st.error("Le type de verre est obligatoire.")
+        st.error("Le champ Design est obligatoire.")
     else:
         product = {
             "advantage": advantage.strip() or None,

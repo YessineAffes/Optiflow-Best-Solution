@@ -104,6 +104,124 @@ def _first_number(text: Any) -> float | None:
     return float(match.group(0).replace(",", "."))
 
 
+# ---------------------------------------------------------------------------
+# Normalisation des corrections optiques (format en centiemes de dioptrie).
+#
+# Format interne canonique = centiemes (entier) : 200 => +2.00 D, -175 => -1.75 D.
+# `to_centiemes` accepte aussi l'ancien format decimal (2.00) pour compatibilite :
+# une valeur avec des decimales OU |v| < 20 est interpretee comme des dioptries
+# et multipliee par 100 ; sinon elle est deja en centiemes.
+# L'axe est en degres et NE passe jamais par ces fonctions.
+# ---------------------------------------------------------------------------
+LEGACY_DIOPTER_MAX = 20  # au-dela, la valeur est forcement en centiemes
+
+
+def to_centiemes(value: Any) -> int | None:
+    """Convertit une correction (dioptries legacy ou centiemes) en centiemes entiers."""
+    number = _first_number(value)
+    if number is None:
+        return None
+    if number != int(number) or abs(number) < LEGACY_DIOPTER_MAX:
+        return int(round(number * 100))
+    return int(number)
+
+
+def to_diopters(value: Any) -> float | None:
+    """Convertit une correction vers des dioptries (unite metier des comparaisons)."""
+    centiemes = to_centiemes(value)
+    return None if centiemes is None else centiemes / 100.0
+
+
+# ---------------------------------------------------------------------------
+# Noms de produits canoniques (source unique) + resolution des alias/codes.
+# ---------------------------------------------------------------------------
+PRODUCT_XR = "Varilux XR Design"
+PRODUCT_X = "Varilux X Design"
+PRODUCT_S = "Varilux S Design"
+PRODUCT_PHYSIO = "VX Physio 3.0"
+PRODUCT_COMFORT = "Varilux Comfort 3.0"
+PRODUCT_COMFORT_MAX = "Varilux Comfort 3.0 Max"
+PRODUCT_LIBERTY = "Varilux Liberty"
+
+# Alias/codes tolerts en entree -> nom canonique. La cle "rep" corrige le bug ou
+# la reponse "rep" (et ses variantes de casse/espaces) ne mappait vers aucun
+# produit : elle designe le Varilux XR Design.
+LENS_TYPE_ALIASES = {
+    "rep": PRODUCT_XR,
+    "xr": PRODUCT_XR,
+    "xr design": PRODUCT_XR,
+    "varilux xr": PRODUCT_XR,
+    "x design": PRODUCT_X,
+    "s design": PRODUCT_S,
+    "physio": PRODUCT_PHYSIO,
+    "vx physio": PRODUCT_PHYSIO,
+    "varilux physio": PRODUCT_PHYSIO,
+    "comfort": PRODUCT_COMFORT,
+    "varilux comfort": PRODUCT_COMFORT,
+}
+
+
+def canonical_lens_type(value: Any) -> str:
+    """Uniformise un nom/code de verre (trim + minuscules + table d'alias).
+
+    Ne modifie que les valeurs qui correspondent exactement a un alias connu
+    (ex: "rep", "REP", " rep "), les noms complets deja canoniques restent
+    inchanges.
+    """
+    normalized = _norm(value)
+    if normalized in LENS_TYPE_ALIASES:
+        return LENS_TYPE_ALIASES[normalized]
+    return str(value or "").strip()
+
+
+def family_from_lens_type(lens_type: Any) -> str:
+    """Famille d'affichage a partir du nom de verre (gere VX Physio 3.0)."""
+    normalized = _norm(lens_type)
+    if "varilux" in normalized or "vx physio" in normalized or "physio" in normalized:
+        return "Varilux"
+    if "eyezen" in normalized or "eyzen" in normalized:
+        return "Eyezen"
+    return "Simple Foyer"
+
+
+# ---------------------------------------------------------------------------
+# Libelles des criteres (nouveaux intitules) + transition (Couleur / Gen S).
+# Les valeurs techniques restent inchangees pour la compatibilite ; seuls les
+# libelles affiches evoluent.
+# ---------------------------------------------------------------------------
+MAIN_NEED_LABELS = {
+    "transparence": "Transparence",
+    "lumiere_bleue": "Protection contre la lumiere bleue",
+    "conduite_soir": "Securite lors de la conduite le soir",
+    "rayures": "Resistance contre les rayures",
+    "nettoyage": "Nettoyage facile",
+}
+
+# Choix maladies (multi-selection). Valeurs affichees = valeurs stockees.
+OCULAR_CHOICES = [
+    "RAS",
+    "Cataracte",
+    "Glaucome",
+    "DMLA",
+    "Pseudophaque",
+    "Conjonctivite",
+    "Retinopathie diabetique",
+    "Arthrose",
+]
+
+TRANSITION_LABEL = "Couleur"  # ancien libelle "Transition(s)" -> "Couleur"
+
+
+def display_transition(value: Any) -> str:
+    """Rend une valeur de transition avec les nouveaux intitules (Gen S / Couleur)."""
+    normalized = _norm(value)
+    if normalized in {"transition", "photochromique", "photo"}:
+        return "Gen S"
+    if normalized == "transitions":
+        return TRANSITION_LABEL
+    return str(value or "").strip() or "-"
+
+
 def _yes_no(text: Any) -> bool | None:
     normalized = _norm(text)
     words = set(normalized.split())
@@ -135,24 +253,51 @@ def _family_from_age(age: int | float | None) -> str | None:
     return "varilux"
 
 
-def _extract_eye_power(text: str, eye: str) -> float | None:
+def _ocular_text(profile: dict[str, Any]) -> str:
+    """Texte normalise des maladies (accepte une chaine ou une liste)."""
+    value = profile.get("ocular_health")
+    if isinstance(value, (list, tuple, set)):
+        return _norm(" ".join(str(item) for item in value))
+    return _norm(value or "")
+
+
+def _extract_eye_values(text: str, eye: str) -> dict[str, int | None]:
+    """Extrait sphere / cylindre / addition (en centiemes) pour un oeil (od/og).
+
+    L'axe est ignore ici : il reste en degres et n'entre pas dans le calcul de
+    correction. Renvoie None pour un parametre absent.
+    """
     normalized = _norm(text)
-    pattern = rf"\b{eye}\b(?P<section>.*?)(?=\bod\b|\bog\b|$)"
-    for match in re.finditer(pattern, normalized):
-        section = match.group("section")
-        sphere_match = re.search(r"\b(?:sph|sphere|shp)\b\s*([+-]?\d+(?:[\.,]\d+)?)", section)
-        if sphere_match:
-            return abs(float(sphere_match.group(1).replace(",", ".")))
-        number = re.search(r"([+-]?\d+(?:[\.,]\d+)?)", section)
-        if number:
-            return abs(float(number.group(1).replace(",", ".")))
-    return None
+    match = re.search(rf"\b{eye}\b(?P<section>.*?)(?=\bod\b|\bog\b|$)", normalized)
+    if not match:
+        return {"sph": None, "cyl": None, "add": None}
+    section = match.group("section")
+
+    def grab(keys: list[str]) -> int | None:
+        for key in keys:
+            found = re.search(rf"\b{key}\b\s*([+-]?\d+(?:[\.,]\d+)?)", section)
+            if found:
+                return to_centiemes(found.group(1))
+        return None
+
+    sphere = grab(["sph", "sphere", "shp"])
+    if sphere is None:
+        # Pas de mot-cle "sph" : premier nombre = sphere par convention.
+        first = re.search(r"([+-]?\d+(?:[\.,]\d+)?)", section)
+        if first:
+            sphere = to_centiemes(first.group(1))
+    return {"sph": sphere, "cyl": grab(["cyl", "cylindre"]), "add": grab(["add", "addition"])}
+
+
+def _eye_correction(values: dict[str, int | None]) -> int:
+    """Correction globale d'un oeil (centiemes) = sphere + cylindre + addition."""
+    return sum(int(values.get(component) or 0) for component in ("sph", "cyl", "add"))
 
 
 def _recommend_index_from_profile(profile: dict[str, Any]) -> str:
     if profile.get("frame_type") == "perce":
         return "1.60"
-    correction = _first_number(profile.get("correction_total"))
+    correction = to_centiemes(profile.get("correction_total"))
     if correction is None:
         return "1.50"
     if correction <= 200:
@@ -166,7 +311,7 @@ def _recommend_index_from_profile(profile: dict[str, Any]) -> str:
 
 def _recommend_treatment_from_profile(profile: dict[str, Any]) -> tuple[str, str]:
     family = _family_from_age(profile.get("age") if isinstance(profile.get("age"), (int, float)) else None)
-    ocular = _norm(profile.get("ocular_health", ""))
+    ocular = _ocular_text(profile)
     prevencia_terms = ["pseudophaque", "glaucome", "cataracte", "dmla", "conjonctivite", "retinopathie"]
     if family == "eyezen":
         prevencia_terms.append("arthrose")
@@ -193,46 +338,55 @@ def _recommend_transition_from_profile(profile: dict[str, Any]) -> tuple[str, st
     )
     if "solaire" in solution:
         return "Solaire", "Preference solaire => Solaire."
-    if "photo" in solution or "transition" in solution:
-        return "Transition", "Preference transition => Transition."
-    return "Blanc", "Transition par defaut => Blanc."
+    if "photo" in solution or "transition" in solution or "gen s" in solution:
+        return "Gen S", "Preference Gen S (photochromique) => Gen S."
+    return "Blanc", "Couleur par defaut => Blanc."
 
 
 def _recommend_varilux_type(profile: dict[str, Any]) -> tuple[str, list[str]]:
     reasons: list[str] = []
     behavior = profile.get("head_eye_behavior")
     if behavior == "head":
-        lens_type = "Varilux Liberty"
-        reasons.append("Client bouge davantage la tete => Varilux Liberty.")
+        lens_type = PRODUCT_LIBERTY
+        reasons.append(f"Client bouge davantage la tete => {PRODUCT_LIBERTY}.")
     elif behavior == "eyes":
-        lens_type = "Varilux Comfort"
-        reasons.append("Client utilise davantage les yeux => Varilux Comfort.")
+        lens_type = PRODUCT_COMFORT
+        reasons.append(f"Client utilise davantage les yeux => {PRODUCT_COMFORT}.")
         if _profile_bool(profile.get("postural_comfort")) is True:
-            lens_type = "Varilux Comfort Max"
-            reasons.append("Question complementaire Varilux Comfort : confort postural souhaite => Varilux Comfort Max.")
+            lens_type = PRODUCT_COMFORT_MAX
+            reasons.append(f"Question complementaire {PRODUCT_COMFORT} : confort postural souhaite => {PRODUCT_COMFORT_MAX}.")
         elif _profile_bool(profile.get("postural_comfort")) is False:
-            reasons.append("Question complementaire Varilux Comfort : confort postural non souhaite => conserver Varilux Comfort.")
+            reasons.append(f"Question complementaire {PRODUCT_COMFORT} : confort postural non souhaite => conserver {PRODUCT_COMFORT}.")
     else:
-        lens_type = "Varilux Liberty"
-        reasons.append("Valeur par defaut Varilux => Varilux Liberty.")
+        lens_type = PRODUCT_LIBERTY
+        reasons.append(f"Valeur par defaut Varilux => {PRODUCT_LIBERTY}.")
 
-    add_power = _first_number(profile.get("add_power"))
+    # ADD comparee en dioptries (accepte centiemes ou ancien format decimal).
+    add_power = to_diopters(profile.get("add_power"))
     if add_power is not None and add_power > 2.25:
-        lens_type = "Varilux S Design"
-        reasons.append("ADD > 2.25 => Varilux S Design.")
+        lens_type = PRODUCT_S
+        reasons.append(f"ADD > 2.25 => {PRODUCT_S}.")
     if _profile_bool(profile.get("near_intermediate_comfort")) is True:
-        lens_type = "Varilux X Design"
-        reasons.append("Vision proche/intermediaire sans bouger la tete souhaitee => Varilux X Design.")
+        lens_type = PRODUCT_X
+        reasons.append(f"Vision proche/intermediaire sans bouger la tete souhaitee => {PRODUCT_X}.")
     if _profile_bool(profile.get("innovation_sensitive")) is False:
-        lens_type = "Varilux XR Design"
-        reasons.append("Client non sensible aux innovations selon le scenario => Varilux XR Design.")
+        lens_type = PRODUCT_XR
+        reasons.append(f"Client non sensible aux innovations selon le scenario => {PRODUCT_XR}.")
+
+    # Regle VX Physio 3.0 (prioritaire) : difference de SPHERE OD/OG > 2.00 D.
+    # La comparaison porte uniquement sur la sphere, jamais sur sph+cyl+add.
+    sphere_od = to_centiemes(profile.get("sphere_od"))
+    sphere_og = to_centiemes(profile.get("sphere_og"))
+    if sphere_od is not None and sphere_og is not None and abs(sphere_od - sphere_og) > 200:
+        lens_type = PRODUCT_PHYSIO
+        reasons.append(f"Difference de sphere OD/OG > 2.00 D => {PRODUCT_PHYSIO}.")
     return lens_type, reasons
 
 
 def _recommend_geometry_from_profile(profile: dict[str, Any], family: str | None) -> tuple[str, str]:
     if family != "varilux":
         return "", ""
-    ocular = _norm(profile.get("ocular_health", ""))
+    ocular = _ocular_text(profile)
     if "arthrose" in ocular:
         return "Short", "Arthrose => geometrie Short."
     if "pseudophaque" in ocular:
@@ -261,6 +415,7 @@ def build_document_recommendation(profile: dict[str, Any], family: str | None) -
     else:
         lens_type, rationale = _recommend_varilux_type(profile)
 
+    lens_type = canonical_lens_type(lens_type)
     index = _recommend_index_from_profile(profile)
     # La gamme Varilux S Design n'existe pas en indice 1.56 : on monte au 1.60.
     s_design_index_bumped = "s design" in _norm(lens_type) and index == "1.56"
@@ -299,17 +454,17 @@ def _downgrade_type(lens_type: str) -> str | None:
     if "simple" in normalized or "eyezen" in normalized:
         return None
     if "xr" in normalized:
-        return "Varilux X Design"
+        return PRODUCT_X
     if "x design" in normalized:
-        return "Varilux S Design"
+        return PRODUCT_S
     if "s design" in normalized:
-        return "Varilux Physio"
+        return PRODUCT_PHYSIO
     if "physio" in normalized:
-        return "Varilux Comfort"
-    if "comfort max" in normalized:
-        return "Varilux Comfort"
+        return PRODUCT_COMFORT
+    if "comfort" in normalized and "max" in normalized:
+        return PRODUCT_COMFORT
     if "comfort" in normalized:
-        return "Varilux Liberty"
+        return PRODUCT_LIBERTY
     return None
 
 
@@ -325,8 +480,8 @@ def _downgrade_treatment(treatment: str) -> str | None:
 def _downgrade_transition(transition: str) -> str | None:
     normalized = _norm(transition)
     if "polaris" in normalized:
-        return "Transition"
-    if "transition" in normalized or "photo" in normalized or "solaire" in normalized:
+        return "Gen S"
+    if "gen s" in normalized or "transition" in normalized or "photo" in normalized or "solaire" in normalized:
         return "Blanc"
     return None
 
@@ -541,8 +696,11 @@ class EssilorAgent:
             "Tu es OptiGuide, un agent opticien Essilor. Tu dois utiliser les tools disponibles "
             "pour chercher dans le RAG, mettre a jour le profil, determiner la prochaine question "
             "ou construire la recommandation. Ne fabrique pas de regle hors documents. "
-            "Respecte les regles importantes: age route la famille; Varilux Comfort + confort postural Oui => VX Comfort Max, Non => conserver Varilux Comfort; "
-            "geometrie Varilux: bureau Regular, portable Short, arthrose/pseudophaque Short; axe et ADD ne choisissent pas l'indice."
+            "Respecte les regles importantes: age route la famille; Varilux Comfort 3.0 + confort postural Oui => Varilux Comfort 3.0 Max, Non => conserver Varilux Comfort 3.0; "
+            "si |sphere OD - sphere OG| > 2.00 D => VX Physio 3.0 (compare la sphere seule, pas sph+cyl+add); "
+            "geometrie Varilux: bureau Regular, portable Short, arthrose/pseudophaque Short; axe et ADD ne choisissent pas l'indice. "
+            "Corrections en centiemes (200 = 2.00 D). Noms de produits exacts: VX Physio 3.0, Comfort 3.0, Varilux XR Design, Gen S; transition affichee 'Couleur' avec valeurs Blanc/Gen S/Solaire. "
+            "Pas d'addition pour Eyezen ni Simple Foyer. Les maladies peuvent etre multiples."
         )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": prompt},
@@ -656,6 +814,11 @@ class EssilorAgent:
             return normalized in {"transition", "solaire"}
         if field == "correction_total":
             return _first_number(value) is not None
+        if field == "ocular_health":
+            # Selection multiple : repondu des qu'une liste (meme ["RAS"]) est posee.
+            if isinstance(value, (list, tuple)):
+                return len(value) > 0
+            return value not in (None, "")
         return value not in (None, "")
 
     def _next_scenario_field(self) -> str | None:
@@ -694,17 +857,42 @@ class EssilorAgent:
                 updates["age"] = int(number)
             return updates
         if field == "correction_total":
-            add = re.search(r"\badd\s*([+-]?\d+(?:[\.,]\d+)?)", normalized)
-            if add:
-                updates["add_power"] = float(add.group(1).replace(",", "."))
-            od_value = _extract_eye_power(user_message, "od")
-            og_value = _extract_eye_power(user_message, "og")
-            if od_value is not None and og_value is not None:
-                updates["correction_total"] = round(max(od_value, og_value) * 100, 1)
+            od = _extract_eye_values(user_message, "od")
+            og = _extract_eye_values(user_message, "og")
+            # Addition globale eventuelle si non renseignee par oeil.
+            global_add = re.search(r"\badd(?:ition)?\s*([+-]?\d+(?:[\.,]\d+)?)", normalized)
+            global_add_c = to_centiemes(global_add.group(1)) if global_add else None
+            if od.get("add") is None:
+                od["add"] = global_add_c
+            if og.get("add") is None:
+                og["add"] = global_add_c
+
+            if od.get("sph") is not None or og.get("sph") is not None:
+                # Sphere par oeil (centiemes) : sert a la regle VX Physio 3.0.
+                if od.get("sph") is not None:
+                    updates["sphere_od"] = od["sph"]
+                if og.get("sph") is not None:
+                    updates["sphere_og"] = og["sph"]
+                if od.get("cyl") is not None:
+                    updates["cyl_od"] = od["cyl"]
+                if og.get("cyl") is not None:
+                    updates["cyl_og"] = og["cyl"]
+                add_values = [value for value in (od.get("add"), og.get("add")) if value is not None]
+                if add_values:
+                    updates["add_od"] = od.get("add") or 0
+                    updates["add_og"] = og.get("add") or 0
+                    updates["add_power"] = max(add_values)  # centiemes
+                # Correction globale par oeil = sphere + cylindre + addition.
+                correction_od = _eye_correction(od)
+                correction_og = _eye_correction(og)
+                updates["correction_od"] = correction_od
+                updates["correction_og"] = correction_og
+                # Indice base sur la correction max en valeur absolue (centiemes).
+                updates["correction_total"] = max(abs(correction_od), abs(correction_og))
             else:
-                number = _first_number(user_message)
+                number = to_centiemes(user_message)
                 if number is not None:
-                    updates["correction_total"] = number * 100 if abs(number) < 20 else number
+                    updates["correction_total"] = abs(number)
             return updates
         if field in {"sun_exposure", "sun_discomfort", "postural_comfort", "near_intermediate_comfort", "innovation_sensitive"}:
             answer = _yes_no(user_message)
@@ -760,6 +948,12 @@ class EssilorAgent:
                 updates["computer_usage"] = "low"
             return updates
         if field == "ocular_health":
-            updates["ocular_health"] = "ras" if normalized in {"ras", "rien", "aucun", "non"} else normalized
+            # Selection multiple : plusieurs maladies separees par des virgules /
+            # points-virgules / slash. On stocke toujours une liste ("maladies").
+            parts = [part.strip() for part in re.split(r"[;,/]", user_message) if part.strip()]
+            if not parts or normalized in {"ras", "rien", "aucun", "non"}:
+                updates["ocular_health"] = ["RAS"]
+            else:
+                updates["ocular_health"] = parts
             return updates
         return updates

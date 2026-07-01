@@ -18,6 +18,11 @@ from agent import (
     _recommend_varilux_type,
     apply_price_downgrade,
     build_document_recommendation,
+    canonical_lens_type,
+    display_transition,
+    family_from_lens_type,
+    to_centiemes,
+    to_diopters,
 )
 import pytest
 
@@ -165,7 +170,7 @@ def test_transition_exposure_not_bothering_is_blanc():
 
 @pytest.mark.parametrize(
     "solution, expected",
-    [("solaire", "Solaire"), ("transition", "Transition")],
+    [("solaire", "Solaire"), ("transition", "Gen S")],
 )
 def test_transition_by_preference(solution, expected):
     transition, _ = _recommend_transition_from_profile(
@@ -184,12 +189,12 @@ def test_varilux_head_behavior():
 
 def test_varilux_eyes_behavior():
     lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "eyes"})
-    assert lens_type == "Varilux Comfort"
+    assert lens_type == "Varilux Comfort 3.0"
 
 
 def test_varilux_postural_comfort_upgrades_to_comfort_max():
     lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "eyes", "postural_comfort": True})
-    assert lens_type == "Varilux Comfort Max"
+    assert lens_type == "Varilux Comfort 3.0 Max"
 
 
 def test_varilux_high_add_power():
@@ -237,32 +242,33 @@ def test_downgrade_lowers_type_and_keeps_index_and_geometry():
         {"age": 70, "head_eye_behavior": "eyes", "postural_comfort": True, "computer_usage": "low", "correction_total": 600},
         "varilux",
     )
-    assert reco["lens_type"] == "Varilux Comfort Max"
+    assert reco["lens_type"] == "Varilux Comfort 3.0 Max"
     before_index, before_geo = reco["index"], reco["geometrie"]
 
     downgraded = apply_price_downgrade(reco, "type")
-    assert downgraded["lens_type"] == "Varilux Comfort"
+    assert downgraded["lens_type"] == "Varilux Comfort 3.0"
     assert downgraded["index"] == before_index
     assert downgraded["geometrie"] == before_geo
 
 
 def test_downgrade_type_follows_full_varilux_hierarchy():
-    # Hierarchie demandee, du plus premium au moins cher.
+    # Hierarchie demandee, du plus premium au moins cher (noms canoniques).
     assert _downgrade_type("Varilux XR Design") == "Varilux X Design"
     assert _downgrade_type("Varilux X Design") == "Varilux S Design"
-    assert _downgrade_type("Varilux S Design") == "Varilux Physio"
-    assert _downgrade_type("Varilux Physio") == "Varilux Comfort"
-    assert _downgrade_type("Varilux Comfort") == "Varilux Liberty"
+    assert _downgrade_type("Varilux S Design") == "VX Physio 3.0"
+    assert _downgrade_type("VX Physio 3.0") == "Varilux Comfort 3.0"
+    assert _downgrade_type("Varilux Comfort 3.0") == "Varilux Liberty"
     assert _downgrade_type("Varilux Liberty") is None
-    # Comfort Max redescend sur Comfort.
-    assert _downgrade_type("Varilux Comfort Max") == "Varilux Comfort"
+    # Comfort Max redescend sur Comfort 3.0.
+    assert _downgrade_type("Varilux Comfort 3.0 Max") == "Varilux Comfort 3.0"
 
 
-def test_every_proposed_type_keeps_varilux_prefix():
-    chain = ["Varilux XR Design", "Varilux X Design", "Varilux S Design", "Varilux Comfort Max"]
+def test_every_proposed_type_gives_a_canonical_name():
+    chain = ["Varilux XR Design", "Varilux X Design", "Varilux S Design", "Varilux Comfort 3.0 Max"]
+    canonical = {"Varilux X Design", "Varilux S Design", "VX Physio 3.0", "Varilux Comfort 3.0", "Varilux Liberty"}
     for lens_type in chain:
         nxt = _downgrade_type(lens_type)
-        assert nxt is not None and nxt.startswith("Varilux ")
+        assert nxt in canonical
 
 
 def test_downgrade_capped_at_two_attempts():
@@ -375,7 +381,8 @@ def test_infer_correction_extracts_add(make_agent):
     a = make_agent()
     a.current_field = "correction_total"
     updates = a._infer_profile_updates("OD Sph -2.00 OG Sph -2.00 ADD 2.50")
-    assert updates["add_power"] == 2.50
+    # add_power stocke en centiemes (2.50 D -> 250).
+    assert updates["add_power"] == 250
 
 
 def test_infer_yes_no(make_agent):
@@ -403,3 +410,145 @@ def test_llm_can_set_unprotected_field(make_agent):
     a._locally_set_fields = {"age"}
     a._execute_agent_tool("update_profile", {"updates": {"main_need": "transparence"}})
     assert a.profile["main_need"] == "transparence"
+
+
+# ==========================================================================
+# Tests d'acceptation (cahier des charges de la mise a jour)
+# ==========================================================================
+
+# --- Normalisation des corrections (centiemes <-> dioptries) ---------------
+@pytest.mark.parametrize(
+    "saisie, centiemes",
+    [(200, 200), (325, 325), (-500, -500), (-175, -175), (50, 50),
+     (2.00, 200), (3.25, 325), (-5.00, -500), (-1.75, -175), (0.50, 50)],
+)
+def test_to_centiemes_accepts_both_formats(saisie, centiemes):
+    assert to_centiemes(saisie) == centiemes
+
+
+@pytest.mark.parametrize("saisie, dioptries", [(200, 2.0), (325, 3.25), (-175, -1.75)])
+def test_to_diopters(saisie, dioptries):
+    assert to_diopters(saisie) == dioptries
+
+
+# --- Uniformite des noms + bug "rep" (Scenario 8) --------------------------
+@pytest.mark.parametrize("value", ["rep", "REP", "Rep", " rep "])
+def test_rep_maps_to_varilux_xr_design(value):
+    assert canonical_lens_type(value) == "Varilux XR Design"
+
+
+def test_canonical_keeps_full_names_unchanged():
+    assert canonical_lens_type("Varilux Comfort 3.0") == "Varilux Comfort 3.0"
+    assert canonical_lens_type("VX Physio 3.0") == "VX Physio 3.0"
+
+
+def test_build_recommendation_canonicalises_rep_lens_type():
+    reco = build_document_recommendation({"age": 70, "innovation_sensitive": False}, "varilux")
+    assert reco["lens_type"] == "Varilux XR Design"
+
+
+# --- Scenario 9 : Comfort -> Comfort 3.0 -----------------------------------
+def test_comfort_is_always_versioned_3_0():
+    lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "eyes"})
+    assert lens_type == "Varilux Comfort 3.0"
+    assert "Comfort" not in _downgrade_type("VX Physio 3.0") or "3.0" in _downgrade_type("VX Physio 3.0")
+
+
+# --- Scenarios 1 & 2 : Eyezen / Simple Foyer sans addition -----------------
+@pytest.mark.parametrize("age, family", [(25, "simple_foyer"), (36, "eyezen")])
+def test_addition_ignored_for_simple_and_eyezen(make_agent, age, family):
+    a = make_agent()
+    a.profile = {"age": age}
+    a.current_field = "correction_total"
+    # Meme si une addition traine dans le message, elle ne change pas la famille
+    # ni ne provoque d'erreur ; l'indice repose sur sph+cyl.
+    updates = a._infer_profile_updates("OD Sph 200 Cyl -50 Axe 90 OG Sph 175 Cyl -25 Axe 80")
+    assert "correction_total" in updates
+    reco = build_document_recommendation({**a.profile, **updates}, family)
+    assert reco["lens_type"]  # recommandation calculee sans erreur
+
+
+# --- Scenario 3 : progressif avec addition ---------------------------------
+def test_progressive_addition_interpreted_as_diopters():
+    # 225 centiemes = 2.25 D (n'est pas > 2.25 -> pas de S Design par l'ADD seule)
+    assert to_diopters(225) == 2.25
+    # 250 centiemes = 2.50 D > 2.25 -> S Design
+    lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "head", "add_power": 250})
+    assert lens_type == "Varilux S Design"
+
+
+# --- Scenario 4 : correction max absolue OD/OG -----------------------------
+def test_correction_uses_max_absolute_of_both_eyes(make_agent):
+    a = make_agent()
+    a.current_field = "correction_total"
+    # OD: -500 + -100 + 200 = -400 (4.00 D) ; OG: -300 + -50 + 200 = -150 (1.50 D)
+    updates = a._infer_profile_updates(
+        "OD Sph -500 Cyl -100 Axe 90 Add 200 OG Sph -300 Cyl -50 Axe 80 Add 200"
+    )
+    assert updates["correction_od"] == -400
+    assert updates["correction_og"] == -150
+    assert updates["correction_total"] == 400  # max(|−400|, |−150|)
+    assert _recommend_index_from_profile({"correction_total": 400}) == "1.56"
+
+
+# --- Scenarios 5 & 6 : regle VX Physio 3.0 sur la difference de sphere ------
+def test_vx_physio_when_sphere_diff_above_2():
+    reco = build_document_recommendation(
+        {"age": 70, "head_eye_behavior": "head", "sphere_od": 400, "sphere_og": 150},
+        "varilux",
+    )
+    assert reco["lens_type"] == "VX Physio 3.0"
+
+
+def test_vx_physio_not_triggered_when_sphere_diff_exactly_2():
+    reco = build_document_recommendation(
+        {"age": 70, "head_eye_behavior": "head", "sphere_od": 300, "sphere_og": 100},
+        "varilux",
+    )
+    assert reco["lens_type"] != "VX Physio 3.0"
+
+
+def test_vx_physio_uses_sphere_only_not_total():
+    # Sphere identique (diff 0) mais cyl/add differents : la regle ne se declenche pas.
+    reco = build_document_recommendation(
+        {"age": 70, "head_eye_behavior": "head", "sphere_od": 200, "sphere_og": 200,
+         "cyl_od": -300, "cyl_og": 0},
+        "varilux",
+    )
+    assert reco["lens_type"] != "VX Physio 3.0"
+
+
+# --- Scenario 7 : maladies multiples ---------------------------------------
+def test_multiple_diseases_are_kept(make_agent):
+    a = make_agent()
+    a.current_field = "ocular_health"
+    updates = a._infer_profile_updates("Diabete, Cataracte")
+    assert updates["ocular_health"] == ["Diabete", "Cataracte"]
+
+
+def test_multiple_diseases_considered_by_treatment():
+    # Cataracte presente dans la liste -> Crizal Prevencia (priorite sante oculaire).
+    treatment, _ = _recommend_treatment_from_profile(
+        {"age": 70, "ocular_health": ["Diabete", "Cataracte"], "main_need": "transparence"}
+    )
+    assert treatment == "Crizal Prevencia"
+
+
+def test_empty_disease_selection_defaults_to_ras(make_agent):
+    a = make_agent()
+    a.current_field = "ocular_health"
+    assert a._infer_profile_updates("ras")["ocular_health"] == ["RAS"]
+
+
+# --- Scenario 10 & transition : nouveaux intitules -------------------------
+def test_transition_display_uses_gen_s_and_couleur():
+    assert display_transition("Transition") == "Gen S"
+    assert display_transition("Blanc") == "Blanc"
+    assert display_transition("Solaire") == "Solaire"
+    assert agent.TRANSITION_LABEL == "Couleur"
+
+
+def test_family_from_lens_type_handles_vx_physio():
+    assert family_from_lens_type("VX Physio 3.0") == "Varilux"
+    assert family_from_lens_type("Eyezen actif") == "Eyezen"
+    assert family_from_lens_type("simple foyer") == "Simple Foyer"
