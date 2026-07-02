@@ -3,11 +3,22 @@
 Page secondaire (multipage Streamlit) destinee a l'expert : ajouter et gerer
 le catalogue de verres stocke dans Supabase. Le catalogue alimente la base de
 connaissance produit du projet.
+
+Les listes de valeurs (Design, Indices, Traitements, Couleur, Geometrie) sont
+importees depuis agent.py : source unique, pas de valeurs ecrites en dur ici.
 """
 
 import streamlit as st
 
 import db
+from agent import (
+    DESIGN_VALUES,
+    GEOMETRY_VALUES,
+    INDEX_VALUES,
+    TRANSITION_LABEL,
+    TRANSITION_VALUES,
+    TREATMENT_VALUES,
+)
 
 st.set_page_config(page_title="Produits · Optiflow", page_icon="👓", layout="wide")
 
@@ -16,6 +27,58 @@ FAMILIES = {
     "Eyezen": "eyezen",
     "Varilux": "varilux",
 }
+
+PLACEHOLDER = "Selectionner une valeur"
+
+# Cles des cases a cocher multi-selection.
+IDX_KEYS = {value: f"idx_{value}" for value in INDEX_VALUES}
+TRT_KEYS = {value: f"trt_{value}" for value in TREATMENT_VALUES}
+
+# Toutes les cles de widgets du formulaire (pour reinitialisation apres envoi).
+FORM_KEYS = (
+    ["prod_family", "prod_design", "prod_description", "prod_transition",
+     "prod_geometry", "prod_reco_for", "idx_all", "trt_all"]
+    + list(IDX_KEYS.values())
+    + list(TRT_KEYS.values())
+)
+
+
+# --- Callbacks "Selectionner tout" / synchronisation des cases individuelles --
+def _select_all(all_key: str, item_keys: list[str]):
+    checked = st.session_state.get(all_key, False)
+    for key in item_keys:
+        st.session_state[key] = checked
+
+
+def _sync_all(all_key: str, item_keys: list[str]):
+    # "Selectionner tout" se coche seulement si toutes les cases sont cochees.
+    st.session_state[all_key] = all(st.session_state.get(key, False) for key in item_keys)
+
+
+def _render_checkbox_group(title: str, all_key: str, keys_by_value: dict[str, str]):
+    item_keys = list(keys_by_value.values())
+    st.markdown(f"**{title}**")
+    st.checkbox(
+        "Selectionner tout",
+        key=all_key,
+        on_change=_select_all,
+        args=(all_key, item_keys),
+    )
+    for value, key in keys_by_value.items():
+        st.checkbox(value, key=key, on_change=_sync_all, args=(all_key, item_keys))
+
+
+def _reset_form():
+    for key in FORM_KEYS:
+        st.session_state.pop(key, None)
+
+
+# Reinitialisation demandee au tour precedent : doit avoir lieu AVANT que les
+# widgets ne soient instancies (sinon Streamlit interdit de modifier leur etat).
+if st.session_state.pop("_reset_product_form", False):
+    _reset_form()
+for key in list(IDX_KEYS.values()) + list(TRT_KEYS.values()) + ["idx_all", "trt_all"]:
+    st.session_state.setdefault(key, False)
 
 st.title("👓 Catalogue produits")
 st.caption("Ajouter et gerer les verres de la base Optiflow Best Solution.")
@@ -27,44 +90,71 @@ if not store.enabled:
         "Renseigne SUPABASE_URL / SUPABASE_KEY (voir SETUP_SUPABASE.md)."
     )
 
-with st.form("add_product", clear_on_submit=True):
-    st.subheader("Ajouter un produit")
-    c2, c3 = st.columns(2)
-    family_label = c2.selectbox("Famille", list(FAMILIES.keys()))
-    lens_type = c3.text_input("Design", placeholder="ex: Varilux XR Design")
+if st.session_state.pop("_product_saved", None):
+    st.success("Produit enregistre.")
 
-    advantage = st.text_area(
-        "Avantage",
-        placeholder="ex: Vision large, confort, transitions douces...",
-        height=120,
-    )
+st.subheader("Ajouter un produit")
 
-    c4, c5, c6 = st.columns(3)
-    index = c4.selectbox("Indice", ["", "1.50", "1.56", "1.60", "1.67"])
-    treatment = c5.text_input("Traitement", placeholder="ex: Crizal Easy Pro")
-    transition = c6.selectbox("Couleur", ["", "Blanc", "Gen S", "Solaire"])
+# Ligne 1 : Famille + Design.
+c_family, c_design = st.columns(2)
+family_label = c_family.selectbox(
+    "Famille", list(FAMILIES.keys()), index=None, placeholder=PLACEHOLDER, key="prod_family"
+)
+lens_type = c_design.selectbox(
+    "Design", DESIGN_VALUES, index=None, placeholder=PLACEHOLDER, key="prod_design"
+)
 
-    geometry = st.selectbox("Geometrie", ["", "Regular", "Short"])
+# Ligne 2 : Description du produit.
+description = st.text_area(
+    "Description du produit",
+    placeholder="Saisir la description, les caracteristiques et les principaux avantages du produit...",
+    height=120,
+    key="prod_description",
+)
 
-    recommended_for = st.text_area("A qui recommander", placeholder="Profils, besoins, indications...")
-    submitted = st.form_submit_button("Enregistrer le produit", use_container_width=True)
+# Ligne 3 : Indices + Traitements (groupes de cases a cocher multi-selection).
+c_index, c_treatment = st.columns(2)
+with c_index:
+    _render_checkbox_group("Indices", "idx_all", IDX_KEYS)
+with c_treatment:
+    _render_checkbox_group("Traitements", "trt_all", TRT_KEYS)
 
-if submitted:
-    if not lens_type.strip():
+# Ligne 4 : Couleur + Geometrie.
+c_transition, c_geometry = st.columns(2)
+transition = c_transition.selectbox(
+    TRANSITION_LABEL, TRANSITION_VALUES, index=None, placeholder=PLACEHOLDER, key="prod_transition"
+)
+geometry = c_geometry.selectbox(
+    "Geometrie", GEOMETRY_VALUES, index=None, placeholder=PLACEHOLDER, key="prod_geometry"
+)
+
+# Ligne 5 : A qui recommander.
+recommended_for = st.text_area(
+    "A qui recommander", placeholder="Profils, besoins, indications...", key="prod_reco_for"
+)
+
+# Derniere ligne : bouton d'enregistrement.
+if st.button("Enregistrer le produit", use_container_width=True, type="primary"):
+    selected_indices = [value for value, key in IDX_KEYS.items() if st.session_state.get(key)]
+    selected_treatments = [value for value, key in TRT_KEYS.items() if st.session_state.get(key)]
+    if not family_label:
+        st.error("La famille est obligatoire.")
+    elif not lens_type:
         st.error("Le champ Design est obligatoire.")
     else:
         product = {
-            "advantage": advantage.strip() or None,
+            "advantage": (description or "").strip() or None,
             "family": FAMILIES[family_label],
-            "lens_type": lens_type.strip(),
-            "index": index or None,
-            "treatment": treatment.strip() or None,
+            "lens_type": lens_type,
+            "index": ", ".join(selected_indices) or None,
+            "treatment": ", ".join(selected_treatments) or None,
             "transition": transition or None,
             "geometry": geometry or None,
-            "recommended_for": recommended_for.strip() or None,
+            "recommended_for": (recommended_for or "").strip() or None,
         }
         if store.add_product(product):
-            st.success(f"Produit « {lens_type} » enregistre.")
+            st.session_state["_product_saved"] = True
+            st.session_state["_reset_product_form"] = True
             st.rerun()
         else:
             st.error(f"Echec de l'enregistrement : {store.last_error or 'base indisponible'}")

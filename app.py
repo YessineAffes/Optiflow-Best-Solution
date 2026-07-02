@@ -58,6 +58,13 @@ html,body,[class*="css"]{font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-
 .live-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid #eee}.live-item{padding:11px 14px;border-right:1px solid #eee;min-height:58px}.live-item:nth-child(2n),.live-item:last-child{border-right:0}
 .live-label{color:#7b8582;font-size:11px;margin:0 0 4px}.live-value{color:#1a1a1a;font-size:13px;font-weight:650;margin:0;word-break:break-word}.live-muted{color:#9a9a9a;font-weight:500}.live-question{padding:12px 16px;color:#26332f;font-size:13px}
 .reco-card{border:1.5px solid;border-radius:16px;overflow:hidden;margin:12px 0;box-shadow:0 4px 16px rgba(0,0,0,.07)}.reco-header{padding:14px 18px}.reco-body{padding:14px 18px;background:white}.reco-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.reco-item{background:#f5f7f6;border-radius:12px;padding:10px 12px}.reco-label{font-size:11px;color:#888;margin:0 0 3px}.reco-value{font-size:14px;font-weight:600;margin:0}.reco-just{border-radius:12px;padding:10px 14px;margin-top:10px;font-size:13px;line-height:1.55}
+/* --- Reco : une colonne par critere = reponse (haut) + justification (bas) --- */
+.reco-crit-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.reco-geo-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+.reco-col{display:flex;flex-direction:column;gap:8px}
+.reco-just-item{background:#eef4f1;border:1px solid #e0eae6;border-radius:12px;padding:10px 12px}
+.reco-just-item .reco-label{color:#0F6E56}
+.reco-just-text{font-size:12.5px;color:#33413c;margin:0;line-height:1.5}
 /* --- Responsive mobile --- */
 @media (max-width:640px){
   .header-box{padding:14px 16px;border-radius:14px}
@@ -67,6 +74,10 @@ html,body,[class*="css"]{font-family:'Inter',-apple-system,Segoe UI,Roboto,sans-
   .live-grid{grid-template-columns:1fr}
   .live-item{border-right:0;border-bottom:1px solid #eee;min-height:auto}
   .reco-grid{grid-template-columns:1fr}
+  .reco-crit-grid,.reco-geo-grid{grid-template-columns:1fr}
+}
+@media (max-width:960px) and (min-width:641px){
+  .reco-crit-grid,.reco-geo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 </style>
 """,
@@ -212,28 +223,49 @@ def render_trace_message(question: str, answer: str):
     st.markdown(bot_bubble(question) + user_bubble(answer), unsafe_allow_html=True)
 
 
+def reco_criterion_col(label: str, value: object, justification: object) -> str:
+    """Colonne d'un critere : bloc reponse (haut) + bloc justification (bas)."""
+    just = str(justification or "").strip() or "Aucune justification disponible."
+    return (
+        '<div class="reco-col">'
+        f'<div class="reco-item"><p class="reco-label">{html_text(label)}</p>'
+        f'<p class="reco-value">{html_text(value)}</p></div>'
+        f'<div class="reco-just-item"><p class="reco-label">Justification</p>'
+        f'<p class="reco-just-text">{html_text(just)}</p></div>'
+        "</div>"
+    )
+
+
 def render_reco(reco: dict):
     lens_type = reco.get("lens_type", "")
     family = family_from_lens_type(lens_type)
     palette = {"Simple Foyer": ("#EAF3DE", "#3B6D11", "#639922"), "Eyezen": ("#E6F1FB", "#185FA5", "#378ADD"), "Varilux": ("#EEEDFE", "#534AB7", "#7F77DD")}
     bg, txt, border = palette[family]
-    rationale = reco.get("rationale", [])
-    rationale_items = "".join(f"<li>{html_text(item)}</li>" for item in rationale)
+    justifications = reco.get("justifications", {}) if isinstance(reco.get("justifications"), dict) else {}
     geometry = reco.get("geometrie", "") if family == "Varilux" else "Non applicable"
     transition_display = display_transition(reco.get("transition", ""))
+
+    criterion_cols = "".join(
+        [
+            reco_criterion_col("Design", lens_type, justifications.get("type")),
+            reco_criterion_col("Indice", reco.get("index", ""), justifications.get("index")),
+            reco_criterion_col("Traitement", reco.get("treatment", ""), justifications.get("treatment")),
+            reco_criterion_col(TRANSITION_LABEL, transition_display, justifications.get("transition")),
+        ]
+    )
+    geo_justification = (
+        justifications.get("geometrie") if family == "Varilux"
+        else "Geometrie non applicable pour ce type de verre."
+    )
+    geometry_col = reco_criterion_col("Geometrie", geometry, geo_justification)
+
     st.markdown(
         f"""
     <div class="reco-card" style="border-color:{border}">
       <div class="reco-header" style="background:{bg}"><strong style="color:{txt}">Recommandation finalisee</strong><br><span style="color:{txt};opacity:.75;font-size:13px">{html_text(lens_type)}</span></div>
       <div class="reco-body">
-        <div class="reco-grid">
-          <div class="reco-item"><p class="reco-label">Design</p><p class="reco-value">{html_text(lens_type)}</p></div>
-          <div class="reco-item"><p class="reco-label">Indice</p><p class="reco-value">{html_text(reco.get("index", ""))}</p></div>
-          <div class="reco-item"><p class="reco-label">Traitement</p><p class="reco-value">{html_text(reco.get("treatment", ""))}</p></div>
-          <div class="reco-item"><p class="reco-label">{TRANSITION_LABEL}</p><p class="reco-value">{html_text(transition_display)}</p></div>
-        </div>
-        <div class="reco-item" style="margin-top:10px"><p class="reco-label">Geometrie</p><p class="reco-value">{html_text(geometry)}</p></div>
-        <div class="reco-just"><p class="reco-label">Justification</p><ul style="margin:6px 0 0 18px;padding:0">{rationale_items}</ul></div>
+        <div class="reco-crit-grid">{criterion_cols}</div>
+        <div class="reco-geo-grid">{geometry_col}</div>
       </div>
     </div>
     """,

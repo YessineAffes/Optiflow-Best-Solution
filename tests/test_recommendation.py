@@ -207,9 +207,15 @@ def test_varilux_near_intermediate_comfort():
     assert lens_type == "Varilux X Design"
 
 
-def test_varilux_not_innovation_sensitive():
-    lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "head", "innovation_sensitive": False})
+def test_varilux_innovation_sensitive_yes_gives_xr_design():
+    # Reponse positive a "sensible aux solutions innovantes" => Varilux XR Design.
+    lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "head", "innovation_sensitive": True})
     assert lens_type == "Varilux XR Design"
+
+
+def test_varilux_innovation_sensitive_no_does_not_give_xr():
+    lens_type, _ = _recommend_varilux_type({"head_eye_behavior": "head", "innovation_sensitive": False})
+    assert lens_type != "Varilux XR Design"
 
 
 # --------------------------------------------------------------------------
@@ -442,8 +448,8 @@ def test_canonical_keeps_full_names_unchanged():
     assert canonical_lens_type("VX Physio 3.0") == "VX Physio 3.0"
 
 
-def test_build_recommendation_canonicalises_rep_lens_type():
-    reco = build_document_recommendation({"age": 70, "innovation_sensitive": False}, "varilux")
+def test_build_recommendation_innovation_yes_gives_xr_design():
+    reco = build_document_recommendation({"age": 70, "innovation_sensitive": True}, "varilux")
     assert reco["lens_type"] == "Varilux XR Design"
 
 
@@ -491,31 +497,48 @@ def test_correction_uses_max_absolute_of_both_eyes(make_agent):
     assert _recommend_index_from_profile({"correction_total": 400}) == "1.56"
 
 
-# --- Scenarios 5 & 6 : regle VX Physio 3.0 sur la difference de sphere ------
-def test_vx_physio_when_sphere_diff_above_2():
+# --- VX Physio 3.0 : difference des CORRECTIONS TOTALES OD/OG, strictement > 2.00 D
+def _reco_with_corrections(correction_od, correction_og):
+    return build_document_recommendation(
+        {"age": 70, "head_eye_behavior": "head",
+         "correction_od": correction_od, "correction_og": correction_og},
+        "varilux",
+    )
+
+
+@pytest.mark.parametrize(
+    "correction_od, correction_og, expect_physio",
+    [
+        (401, 200, True),    # diff 201 = 2.01 D -> oui
+        (400, 150, True),    # diff 250 = 2.50 D -> oui
+        (300, 100, False),   # diff 200 = 2.00 D (exactement) -> non
+        (299, 100, False),   # diff 199 = 1.99 D -> non
+    ],
+)
+def test_vx_physio_strictly_above_2_diopters(correction_od, correction_og, expect_physio):
+    reco = _reco_with_corrections(correction_od, correction_og)
+    assert (reco["lens_type"] == "VX Physio 3.0") is expect_physio
+
+
+def test_vx_physio_uses_total_correction_not_sphere():
+    # Sphere identique (diff 0) mais le cylindre creuse la correction totale :
+    # OD total = -300, OG total = 0 -> diff 300 = 3.00 D -> VX Physio 3.0.
     reco = build_document_recommendation(
-        {"age": 70, "head_eye_behavior": "head", "sphere_od": 400, "sphere_og": 150},
+        {"age": 70, "head_eye_behavior": "head",
+         "sphere_od": 0, "sphere_og": 0, "correction_od": -300, "correction_og": 0},
         "varilux",
     )
     assert reco["lens_type"] == "VX Physio 3.0"
 
 
-def test_vx_physio_not_triggered_when_sphere_diff_exactly_2():
-    reco = build_document_recommendation(
-        {"age": 70, "head_eye_behavior": "head", "sphere_od": 300, "sphere_og": 100},
-        "varilux",
-    )
-    assert reco["lens_type"] != "VX Physio 3.0"
-
-
-def test_vx_physio_uses_sphere_only_not_total():
-    # Sphere identique (diff 0) mais cyl/add differents : la regle ne se declenche pas.
-    reco = build_document_recommendation(
-        {"age": 70, "head_eye_behavior": "head", "sphere_od": 200, "sphere_og": 200,
-         "cyl_od": -300, "cyl_og": 0},
-        "varilux",
-    )
-    assert reco["lens_type"] != "VX Physio 3.0"
+def test_vx_physio_end_to_end_from_prescription(make_agent):
+    # Depuis la saisie OD/OG jusqu'a la recommandation finale.
+    a = make_agent()
+    a.current_field = "correction_total"
+    updates = a._infer_profile_updates("OD Sph -500 Cyl -100 Axe 90 OG Sph -100 Cyl 0 Axe 80")
+    # OD total = -600 (6.00 D), OG total = -100 (1.00 D) -> diff 5.00 D -> VX Physio 3.0
+    reco = build_document_recommendation({"age": 70, "head_eye_behavior": "head", **updates}, "varilux")
+    assert reco["lens_type"] == "VX Physio 3.0"
 
 
 # --- Scenario 7 : maladies multiples ---------------------------------------

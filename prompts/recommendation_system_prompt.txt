@@ -46,10 +46,11 @@ Base selon head_eye_behavior :
 Surcharges (appliquées dans cet ordre, la dernière vraie gagne) :
 - ADD > 2.25 D                                -> "Varilux S Design"
 - vision proche/intermédiaire sans bouger la tête = Oui -> "Varilux X Design"
-- client NON sensible aux innovations         -> "Varilux XR Design"
-- PRIORITAIRE : |sphère OD - sphère OG| > 2.00 D -> "VX Physio 3.0"
-  (compare la SPHÈRE seule, jamais sphère+cylindre+addition ; cette règle
-   n'est jamais écrasée par une recommandation plus générique.)
+- client sensible aux solutions innovantes = Oui -> "Varilux XR Design"
+- PRIORITAIRE : |correction totale OD - correction totale OG| > 2.00 D -> "VX Physio 3.0"
+  (correction totale par œil = sphère + cylindre + addition ; comparaison
+   STRICTEMENT supérieure à 2.00 D : 2.01 -> oui, 2.00 -> non, 1.99 -> non ;
+   cette règle n'est jamais écrasée par une recommandation plus générique.)
 Le code "rep" (quelle que soit la casse ou les espaces) désigne "Varilux XR Design".
 
 ============================================================

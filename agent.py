@@ -98,7 +98,9 @@ def _norm(text: Any) -> str:
 
 
 def _first_number(text: Any) -> float | None:
-    match = re.search(r"-?\d+(?:[\.,]\d+)?", str(text or ""))
+    # Ne pas utiliser `text or ""` : la valeur 0 (ex: oeil plan) serait convertie
+    # en chaine vide et perdue. On ne remplace que None par une chaine vide.
+    match = re.search(r"-?\d+(?:[\.,]\d+)?", "" if text is None else str(text))
     if not match:
         return None
     return float(match.group(0).replace(",", "."))
@@ -220,6 +222,37 @@ def display_transition(value: Any) -> str:
     if normalized == "transitions":
         return TRANSITION_LABEL
     return str(value or "").strip() or "-"
+
+
+# ---------------------------------------------------------------------------
+# Valeurs de catalogue : source unique alimentant les listes de l'interface
+# Produits. Les designs Varilux/VX reutilisent les constantes PRODUCT_* pour
+# eviter toute divergence. INDEX_VALUES = liste d'indices deja utilisee dans le
+# projet (voir _recommend_index_from_profile).
+# ---------------------------------------------------------------------------
+DESIGN_VALUES = [
+    "Simple Foyer",
+    "Eyezen initial",
+    "Eyezen actif",
+    "Eyezen actif +",
+    PRODUCT_LIBERTY,
+    PRODUCT_COMFORT,
+    PRODUCT_COMFORT_MAX,
+    PRODUCT_PHYSIO,
+    PRODUCT_S,
+    PRODUCT_X,
+    PRODUCT_XR,
+]
+INDEX_VALUES = ["1.50", "1.56", "1.60", "1.67"]
+TREATMENT_VALUES = [
+    "Crizal Easy Pro",
+    "Crizal Sapphire HR",
+    "Crizal Prevencia",
+    "Crizal Drive",
+    "Crizal Rock",
+]
+TRANSITION_VALUES = ["Blanc", "Gen S", "Solaire"]
+GEOMETRY_VALUES = ["Regular", "Short"]
 
 
 def _yes_no(text: Any) -> bool | None:
@@ -369,17 +402,17 @@ def _recommend_varilux_type(profile: dict[str, Any]) -> tuple[str, list[str]]:
     if _profile_bool(profile.get("near_intermediate_comfort")) is True:
         lens_type = PRODUCT_X
         reasons.append(f"Vision proche/intermediaire sans bouger la tete souhaitee => {PRODUCT_X}.")
-    if _profile_bool(profile.get("innovation_sensitive")) is False:
+    if _profile_bool(profile.get("innovation_sensitive")) is True:
         lens_type = PRODUCT_XR
-        reasons.append(f"Client non sensible aux innovations selon le scenario => {PRODUCT_XR}.")
+        reasons.append(f"Client sensible aux solutions innovantes => {PRODUCT_XR}.")
 
-    # Regle VX Physio 3.0 (prioritaire) : difference de SPHERE OD/OG > 2.00 D.
-    # La comparaison porte uniquement sur la sphere, jamais sur sph+cyl+add.
-    sphere_od = to_centiemes(profile.get("sphere_od"))
-    sphere_og = to_centiemes(profile.get("sphere_og"))
-    if sphere_od is not None and sphere_og is not None and abs(sphere_od - sphere_og) > 200:
+    # Regle VX Physio 3.0 (prioritaire) : difference des CORRECTIONS TOTALES OD/OG
+    # (sphere + cylindre + addition par oeil) strictement superieure a 2.00 D.
+    correction_od = to_centiemes(profile.get("correction_od"))
+    correction_og = to_centiemes(profile.get("correction_og"))
+    if correction_od is not None and correction_og is not None and abs(correction_od - correction_og) > 200:
         lens_type = PRODUCT_PHYSIO
-        reasons.append(f"Difference de sphere OD/OG > 2.00 D => {PRODUCT_PHYSIO}.")
+        reasons.append(f"Difference de correction totale OD/OG > 2.00 D => {PRODUCT_PHYSIO}.")
     return lens_type, reasons
 
 
@@ -416,23 +449,36 @@ def build_document_recommendation(profile: dict[str, Any], family: str | None) -
         lens_type, rationale = _recommend_varilux_type(profile)
 
     lens_type = canonical_lens_type(lens_type)
+    # Justification propre au Design (les raisons qui ont produit le type de verre).
+    type_reason = " ".join(rationale)
+
     index = _recommend_index_from_profile(profile)
     # La gamme Varilux S Design n'existe pas en indice 1.56 : on monte au 1.60.
     s_design_index_bumped = "s design" in _norm(lens_type) and index == "1.56"
     if s_design_index_bumped:
         index = "1.60"
     if profile.get("frame_type") == "perce":
-        rationale.append("Montage perce => indice 1.60 prioritaire.")
+        index_reason = "Montage perce => indice 1.60 prioritaire."
     elif s_design_index_bumped:
-        rationale.append("Varilux S Design indisponible en 1.56 => indice 1.60.")
+        index_reason = "Varilux S Design indisponible en 1.56 => indice 1.60."
     else:
-        rationale.append(f"Indice calcule selon la puissance maximale OD/OG => {index}.")
+        index_reason = f"Indice calcule selon la puissance maximale OD/OG => {index}."
+    rationale.append(index_reason)
     treatment, treatment_reason = _recommend_treatment_from_profile(profile)
     transition, transition_reason = _recommend_transition_from_profile(profile)
     geometry, geometry_reason = _recommend_geometry_from_profile(profile, family)
     rationale.extend([treatment_reason, transition_reason])
     if geometry_reason:
         rationale.append(geometry_reason)
+    # Justifications par critere (affichage : une justification sous chaque reponse).
+    justifications = {
+        "type": type_reason,
+        "index": index_reason,
+        "treatment": treatment_reason,
+        "transition": transition_reason,
+    }
+    if geometry:
+        justifications["geometrie"] = geometry_reason
     reco = {
         "lens_type": lens_type,
         "index": index,
@@ -443,6 +489,7 @@ def build_document_recommendation(profile: dict[str, Any], family: str | None) -
         "confidence": 0.95,
         "rationale": rationale,
         "applied_rules": rationale,
+        "justifications": justifications,
     }
     if geometry:
         reco["geometrie"] = geometry
@@ -549,8 +596,14 @@ def apply_price_downgrade(reco: dict[str, Any], field: str) -> dict[str, Any]:
         updated["geometrie"] = before_geometry
 
     rationale = list(updated.get("rationale", []) or [])
-    rationale.append(f"Optimisation prix appliquée sur {field}; indice et géométrie conservés.")
+    downgrade_note = f"Optimisation prix appliquée sur {field}; indice et géométrie conservés."
+    rationale.append(downgrade_note)
     updated["rationale"] = rationale
+    # Garde la justification par critere coherente avec la valeur apres downgrade.
+    justifications = dict(updated.get("justifications", {}) or {})
+    if field in justifications:
+        justifications[field] = downgrade_note
+    updated["justifications"] = justifications
     updated["downgradeAttempts"] = attempts + 1
     updated["priceOptimization"] = {"attempts": attempts + 1}
     return build_price_optimization(updated)
@@ -697,7 +750,7 @@ class EssilorAgent:
             "pour chercher dans le RAG, mettre a jour le profil, determiner la prochaine question "
             "ou construire la recommandation. Ne fabrique pas de regle hors documents. "
             "Respecte les regles importantes: age route la famille; Varilux Comfort 3.0 + confort postural Oui => Varilux Comfort 3.0 Max, Non => conserver Varilux Comfort 3.0; "
-            "si |sphere OD - sphere OG| > 2.00 D => VX Physio 3.0 (compare la sphere seule, pas sph+cyl+add); "
+            "si |correction totale OD - correction totale OG| > 2.00 D => VX Physio 3.0 (correction totale = sphere+cylindre+addition par oeil, strictement > 2.00 D); "
             "geometrie Varilux: bureau Regular, portable Short, arthrose/pseudophaque Short; axe et ADD ne choisissent pas l'indice. "
             "Corrections en centiemes (200 = 2.00 D). Noms de produits exacts: VX Physio 3.0, Comfort 3.0, Varilux XR Design, Gen S; transition affichee 'Couleur' avec valeurs Blanc/Gen S/Solaire. "
             "Pas d'addition pour Eyezen ni Simple Foyer. Les maladies peuvent etre multiples."
