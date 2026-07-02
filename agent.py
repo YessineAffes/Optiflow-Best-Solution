@@ -429,6 +429,70 @@ def _recommend_geometry_from_profile(profile: dict[str, Any], family: str | None
     return "Regular", "Ordinateur de bureau => Regular."
 
 
+# ---------------------------------------------------------------------------
+# Justifications concises orientees "produit" (affichage). Elles expliquent
+# POURQUOI la valeur est recommandee sans reciter le detail des questions.
+# La trace detaillee reste disponible via "rationale" / "applied_rules".
+# ---------------------------------------------------------------------------
+def _justify_type(lens_type: str) -> str:
+    normalized = _norm(lens_type)
+    if "physio" in normalized:
+        return "Progressif recommande pour equilibrer une difference de correction marquee entre les deux yeux."
+    if "xr design" in normalized:
+        return "Progressif haut de gamme, la solution la plus innovante et la plus fluide."
+    if "x design" in normalized:
+        return "Progressif offrant une large vision de pres et en vision intermediaire."
+    if "s design" in normalized:
+        return "Progressif adapte a une addition elevee."
+    if "comfort" in normalized:
+        return "Progressif offrant un large confort de lecture au quotidien."
+    if "liberty" in normalized:
+        return "Progressif adapte a votre usage courant."
+    if "eyezen" in normalized:
+        return "Verre concu pour soulager la vision de pres et la fatigue visuelle."
+    if "simple" in normalized:
+        return "Verre unifocal (simple foyer) adapte a votre correction."
+    return f"{lens_type} adapte a votre profil."
+
+
+def _justify_index(index: str, profile: dict[str, Any]) -> str:
+    if profile.get("frame_type") == "perce":
+        return f"Indice {index} requis par un montage perce."
+    return f"Indice {index} choisi selon la puissance de votre correction."
+
+
+def _justify_treatment(treatment: str) -> str:
+    normalized = _norm(treatment)
+    if "prevencia" in normalized:
+        return "Protege vos yeux (lumiere bleue et sante oculaire)."
+    if "sapphire" in normalized:
+        return "Transparence maximale et reflets reduits."
+    if "drive" in normalized:
+        return "Optimise la vision et le confort pour la conduite de nuit."
+    if "rock" in normalized:
+        return "Resistance renforcee aux rayures."
+    if "easy" in normalized:
+        return "Entretien facile et nettoyage rapide."
+    return "Traitement adapte a vos besoins."
+
+
+def _justify_transition(transition: str) -> str:
+    normalized = _norm(transition)
+    if "gen s" in normalized or "transition" in normalized or "photo" in normalized:
+        return "Verre photochromique Gen S qui s'adapte automatiquement a la luminosite."
+    if "solaire" in normalized:
+        return "Verre solaire adapte a une forte exposition au soleil."
+    return "Verre blanc : pas de besoin de protection solaire particuliere."
+
+
+def _justify_geometry(geometry: str, family: str | None) -> str:
+    if family != "varilux" or not geometry:
+        return "Non applicable pour ce type de verre."
+    if _norm(geometry) == "short":
+        return "Geometrie Short adaptee a un usage rapproche et a plus de confort."
+    return "Geometrie Regular adaptee a un usage standard."
+
+
 def build_document_recommendation(profile: dict[str, Any], family: str | None) -> dict[str, Any]:
     rationale: list[str] = []
     if family == "simple_foyer":
@@ -470,15 +534,17 @@ def build_document_recommendation(profile: dict[str, Any], family: str | None) -
     rationale.extend([treatment_reason, transition_reason])
     if geometry_reason:
         rationale.append(geometry_reason)
-    # Justifications par critere (affichage : une justification sous chaque reponse).
+    # Justifications concises par critere (affichage) ; la trace detaillee reste
+    # dans "rationale". type_reason/index_reason ci-dessus alimentent "rationale".
+    _ = type_reason  # conserve pour la trace detaillee (rationale)
     justifications = {
-        "type": type_reason,
-        "index": index_reason,
-        "treatment": treatment_reason,
-        "transition": transition_reason,
+        "type": _justify_type(lens_type),
+        "index": _justify_index(index, profile),
+        "treatment": _justify_treatment(treatment),
+        "transition": _justify_transition(transition),
     }
     if geometry:
-        justifications["geometrie"] = geometry_reason
+        justifications["geometrie"] = _justify_geometry(geometry, family)
     reco = {
         "lens_type": lens_type,
         "index": index,
@@ -599,10 +665,14 @@ def apply_price_downgrade(reco: dict[str, Any], field: str) -> dict[str, Any]:
     downgrade_note = f"Optimisation prix appliquée sur {field}; indice et géométrie conservés."
     rationale.append(downgrade_note)
     updated["rationale"] = rationale
-    # Garde la justification par critere coherente avec la valeur apres downgrade.
+    # Garde la justification concise coherente avec la nouvelle valeur.
     justifications = dict(updated.get("justifications", {}) or {})
-    if field in justifications:
-        justifications[field] = downgrade_note
+    if field == "type":
+        justifications["type"] = _justify_type(str(updated.get("lens_type", "")))
+    elif field == "treatment":
+        justifications["treatment"] = _justify_treatment(str(updated.get("treatment", "")))
+    elif field == "transition":
+        justifications["transition"] = _justify_transition(str(updated.get("transition", "")))
     updated["justifications"] = justifications
     updated["downgradeAttempts"] = attempts + 1
     updated["priceOptimization"] = {"attempts": attempts + 1}
