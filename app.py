@@ -353,6 +353,8 @@ def render_expert_panel(field: str, question: str):
     with st.expander(f"🛠️ Expert · {question}", expanded=False):
         if not store.enabled:
             st.info("Supabase non configure : annotations non enregistrees. Voir SETUP_SUPABASE.md.")
+            if store.last_error:
+                st.error(store.last_error)
         with st.form(f"expert_form_{field}", clear_on_submit=True):
             note = st.text_area("Note / observation", placeholder="Remarque, regle a corriger, cas particulier...", height=90)
             verified = st.checkbox("Question / regle verifiee")
@@ -385,6 +387,8 @@ def render_evaluation_panel(reco: dict):
     with st.expander("✅ Validation de la recommandation", expanded=True):
         if not store.enabled:
             st.info("Supabase non configure : validations non enregistrees. Voir SETUP_SUPABASE.md.")
+            if store.last_error:
+                st.error(store.last_error)
         with st.form("eval_form", clear_on_submit=False):
             answers = {}
             for key, label, value in fields:
@@ -475,7 +479,10 @@ with st.sidebar:
         st.session_state.expert_author = st.text_input(
             "Expert", value=st.session_state.get("expert_author", ""), placeholder="Votre nom"
         )
-        st.caption("Base : " + ("Supabase connecte" if db.get_store().enabled else "non configuree"))
+        _store = db.get_store()
+        st.caption("Base : " + ("Supabase connecte" if _store.enabled else "non configuree"))
+        if not _store.enabled and _store.last_error:
+            st.caption("⚠️ " + _store.last_error)
 
 main_col, preview_col = st.columns([1.25, 1], gap="large")
 

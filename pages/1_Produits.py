@@ -89,6 +89,8 @@ if not store.enabled:
         "Supabase n'est pas configure : impossible d'enregistrer ou de lister les produits. "
         "Renseigne SUPABASE_URL / SUPABASE_KEY (voir SETUP_SUPABASE.md)."
     )
+    if store.last_error:
+        st.error(store.last_error)
 
 if st.session_state.pop("_product_saved", None):
     st.success("Produit enregistre.")

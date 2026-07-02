@@ -35,6 +35,37 @@ LOGS_TABLE = "recommendation_logs"
 EVALUATIONS_TABLE = "evaluations"
 
 
+# Caracteres invisibles souvent introduits par un copier-coller (BOM, espace
+# insecable, zero-width, guillemets typographiques) qui corrompent une cle/URL.
+_INVISIBLE = "﻿​‌‍⁠\xa0"
+
+
+def _clean_credential(value: str) -> str:
+    """Nettoie une URL/cle : espaces, BOM/zero-width, et guillemets englobants."""
+    cleaned = (value or "").strip().strip(_INVISIBLE).strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in "\"'":
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
+def _credential_ascii_error(url: str, key: str) -> str | None:
+    """Detecte un caractere non-ASCII dans l'URL/la cle (invalide en en-tete HTTP).
+
+    httpx encode les en-tetes (apikey / Authorization) en ASCII et leve sinon une
+    UnicodeEncodeError cryptique. On la transforme en message actionnable.
+    """
+    for name, val in (("SUPABASE_URL", url), ("SUPABASE_KEY", key)):
+        if not val.isascii():
+            pos = next(i for i, ch in enumerate(val) if ord(ch) > 127)
+            return (
+                f"{name} contient un caractere non-ASCII ('{val[pos]}' en position {pos}). "
+                "Verifiez la valeur dans les secrets Streamlit / le .env : accents, "
+                "guillemets typographiques ou espace insecable colles par erreur. "
+                "Une cle Supabase valide ne contient que des caracteres ASCII."
+            )
+    return None
+
+
 def _family_from_lens_type(lens_type: str) -> str:
     text = (lens_type or "").lower()
     if "varilux" in text:
@@ -50,11 +81,18 @@ class SupabaseStore:
     def __init__(self, url: str = "", key: str = ""):
         self.client: Client | None = None
         self.last_error: str | None = None
+        url = _clean_credential(url)
+        key = _clean_credential(key)
         if not (url and key):
             return
         if create_client is None:
             self.last_error = "Le paquet 'supabase' n'est pas installe."
             logger.info("%s", self.last_error)
+            return
+        ascii_error = _credential_ascii_error(url, key)
+        if ascii_error:
+            self.last_error = ascii_error
+            logger.error("Identifiants Supabase invalides: %s", ascii_error)
             return
         try:
             self.client = create_client(url, key)
@@ -81,7 +119,7 @@ class SupabaseStore:
 
     def add_product(self, product: dict[str, Any]) -> bool:
         if not self.enabled:
-            self.last_error = "Supabase non configure."
+            self.last_error = self.last_error or "Supabase non configure."
             return False
         try:
             self.client.table(PRODUCTS_TABLE).insert(product).execute()
@@ -112,7 +150,7 @@ class SupabaseStore:
         author: str = "",
     ) -> bool:
         if not self.enabled:
-            self.last_error = "Supabase non configure."
+            self.last_error = self.last_error or "Supabase non configure."
             return False
         payload = {
             "field": field,
@@ -162,7 +200,7 @@ class SupabaseStore:
         transition_ok, et geometry_ok (uniquement si Varilux ; sinon None).
         """
         if not self.enabled:
-            self.last_error = "Supabase non configure."
+            self.last_error = self.last_error or "Supabase non configure."
             return False
         lens_type = str(reco.get("lens_type", ""))
         payload = {
